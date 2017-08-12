@@ -72,22 +72,34 @@ def testEndpoint():
     assert(endpoint.count == 2)
     assert(endpoint.available())
     
-    headers = {'X-Method-Rate-Limit':'1:1,10:12'}
+    headers = {'X-Method-Rate-Limit':'1:0.1,10:1', 'X-Method-Rate-Limit-Count':'0:0.1,10:1'}
     endpoint.setLimit(headers)
     assert(endpoint.available())
     assert(endpoint.limitsDefined)
     assert(endpoint.get() == summoner_url)
-    assert(endpoint.get() == None) # Exceeded limit
-    print('Time:\t\t%s'%time.time())
-    print('resetTime:\t%s'%endpoint.resetTime())
-    assert(endpoint.resetTime() > time.time() + 0.9)
-    time.sleep(1)
+    assert(endpoint.get() == None) # Exceeded limit, returned nothing
+    assert(endpoint.resetTime() > time.time() + 0.01)
+    time.sleep(0.1)
     assert(endpoint.resetTime() < time.time())
+    
+    endpoint.setCount(headers)
+    assert(endpoint.available() == False)
+    assert(endpoint.get() == None) # Exceeded limit, returned nothing
+    time.sleep(0.1)
+    assert(endpoint.available() == False)
+    time.sleep(0.9)
+    assert(endpoint.available())
     
     print('Endpoint tests pass')
     
     
 def testPlatform():
+    platform = Platform()
+    assert(platform.rateLimitOK())
+    assert(platform.hasURL() == False)
+    assert(platform.timeNextAvailable() == None)
+    assert(platform.count == 0)
+    
     print('Platform tests pass')
 
 
@@ -111,7 +123,10 @@ def testRateLimiter():
         #r.add_header('api_name', 'test_1')
         requests.urlopen(r)
 
+        
 if __name__ == '__main__':
     testLimit()
     testEndpoint()
-    #testPlatform()
+    testPlatform()
+    # testRateLimiter()
+    

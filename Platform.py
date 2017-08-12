@@ -4,7 +4,7 @@ from Limit import Limit
 from Endpoint import Endpoint
 
 class Platform():
-    def __init__(self, slug):
+    def __init__(self, slug=''):
         self.slug = slug
         self.lock = Lock()
 
@@ -17,9 +17,12 @@ class Platform():
         self.last_limited_endpoint = ''
         
         self.platform_limits = {}
-        
-        self.last_endpoint = ''
 
+        
+    @property
+    def count(self):
+        return self.static_count + self.limited_count
+        
         
     def addURL(self, url):
         endpoint = Endpoint.identifyEndpoint(url)
@@ -94,7 +97,7 @@ class Platform():
                 self.limited_endpoints[endpoint].setCount(headers)
         
         
-    def soonestAvailable(self, endpoints):
+    def _soonestAvailable(self, endpoints):
         soonest = None
         for endpoint in endpoints:
             if endpoint.available():
@@ -113,9 +116,9 @@ class Platform():
         # Return the time when the next request will be available
         # Use this so the Ticker isn't constantly hammering Platform
         if self.static_count > 0:
-            return self.soonestAvailable(self.static_endpoints)
+            return self._soonestAvailable(self.static_endpoints)
         elif self.limited_count > 0 and self.rateLimitOK():
-            return self.soonestAvailable(self.limited_endpoints)
+            return self._soonestAvailable(self.limited_endpoints)
         else:
             return None # No records!
         

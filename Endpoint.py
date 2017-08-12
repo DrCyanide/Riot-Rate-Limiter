@@ -84,9 +84,10 @@ class Endpoint():
     def resetTime(self):
         r_time = time.time()
         for limit in self.limits:
-            t = self.limits[limit].resetTime()
-            if t > r_time:
-                r_time = t
+            if not self.limits[limit].ready():
+                t = self.limits[limit].resetTime()
+                if t > r_time:
+                    r_time = t
         return r_time
         
         
