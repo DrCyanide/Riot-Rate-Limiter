@@ -1,0 +1,34 @@
+
+{
+	"riot_games":{
+		"api_key":"ABCD-1234-GLHF-RITO-PLZ",
+		"platforms":[
+			"BR1",
+			"EUN1",
+			"EUW1",
+			"JP1",
+			"KR",
+			"LA1",
+			"LA2",
+			"NA1",
+			"OC1",
+			"TR1",
+			"RU"
+		]
+	},
+	
+	"server": {
+		"host": "localhost",
+		"port": 8000
+	},
+	
+	"threads": {
+		"api_threads": 5,
+		"return_threads": 1
+	},
+	
+	"security": {
+		"blacklist":[],
+		"whitelist":["127.0.0.1"]
+	}
+}
