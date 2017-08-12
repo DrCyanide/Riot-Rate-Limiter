@@ -17,16 +17,18 @@ class Endpoint():
     @classmethod
     def identifyEndpoint(cls, url):
         url = url[:url.find('?')].lower() # Remove the query string
-        split_url = url.split()
+        split_url = url.split('/')
         endpoint = ''
         try:
-            split_url = split_url[2:] # remove region
+            split_url = split_url[3:] # remove region
             if 'by-name' in split_url: 
                 endpoint = '/'.join(split_url[:-1]) # Ignore the player name itself
             else:
+                non_numeric = []
                 for segment in split_url:
                     if not segment.isnumeric():
-                        endpoint += segment + '/'
+                        non_numeric.append(segment)
+                endpoint = '/'.join(non_numeric)
         except:
             endpoint = 'BadEndpoint'
         return endpoint
@@ -43,9 +45,9 @@ class Endpoint():
             for limit in limits:
                 requests, seconds = limit.split(':')
                 if seconds in self.limits:
-                    self.limits[seconds].limit = requests
+                    self.limits[seconds].limit = int(requests)
                 else:
-                    self.limits[seconds] = Limit(seconds, requests)
+                    self.limits[seconds] = Limit(float(seconds), int(requests))
             
     
     def setCount(self, headers):
@@ -54,20 +56,23 @@ class Endpoint():
             for limit in limits:
                 used, seconds = limit.split(':')
                 if seconds in self.limits:
-                    self.limits[seconds].used = used
+                    self.limits[seconds].used = int(used)
                 
                 
     def add(self, url):
         if self.name == '':
-            self.name = identifyEndpoint(url)
+            self.name = Endpoint.identifyEndpoint(url)
+        else:
+            if self.name != Endpoint.identifyEndpoint(url):
+                raise Exception('Invalid URL, does not match endpoint')
         self.lock.acquire()
-        self.queue.add(url)
+        self.queue.put(url)
         self.lock.release()
         
         
     def available(self):
         for limit in self.limits:
-            if not limit.ready():
+            if not self.limits[limit].ready():
                 return False
         return True
         
@@ -79,7 +84,7 @@ class Endpoint():
     def resetTime(self):
         r_time = time.time()
         for limit in self.limits:
-            t = limit.resetTime()
+            t = self.limits[limit].resetTime()
             if t > r_time:
                 r_time = t
         return r_time
@@ -96,9 +101,9 @@ class Endpoint():
             return None
                 
         for limit in self.limits:
-            limit.use()
+            self.limits[limit].use()
             
-        url = self.queue.pop()
+        url = self.queue.get()
         self.lock.release()
         return url
          
