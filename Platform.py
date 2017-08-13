@@ -57,6 +57,7 @@ class Platform():
         
     def setLimit(self, headers):
         # Set self.limits
+        self.lock.acquire()
         limits = headers['X-App-Rate-Limit'].split(',')
         for limit in limits:
             requests, seconds = limit.split(':')
@@ -64,15 +65,16 @@ class Platform():
                 self.platform_limits[seconds].setLimit(seconds, requests)
             else:
                 self.platform_limits[seconds] = Limit(seconds, requests)
-       
+        self.lock.release()
        
     def setCount(self, headers):
+        self.lock.acquire()
         limits = headers['X-App-Rate-Limit-Count'].split(',')
         for limit in limits:
             used, seconds = limit.split(':')
             if seconds in self.platform_limits:
                 self.platform_limits[seconds].setUsed(used)
-
+        self.lock.release()
     
     def setLimitAndCount(self, headers):
         self.setLimit(headers)
@@ -80,6 +82,7 @@ class Platform():
                 
                 
     def setEndpointLimit(self, url, headers):
+        self.lock.acquire()
         endpoint_str = Endpoint.identifyEndpoint(url)
         if 'static' in endpoint_str:
             if not self.static_endpoints[endpoint_str].limitsDefined:
@@ -87,9 +90,10 @@ class Platform():
         else:
             if not self.limited_endpoints[endpoint_str].limitsDefined:
                 self.limited_endpoints[endpoint_str].setLimit(headers)
-    
+        self.lock.release()
     
     def setEndpointCount(self, url, headers):
+        self.lock.acquire()
         endpoint_str = Endpoint.identifyEndpoint(url)
         if 'static' in endpoint_str:
             if not self.static_endpoints[endpoint_str].limitsDefined:
@@ -97,7 +101,7 @@ class Platform():
         else:
             if not self.limited_endpoints[endpoint_str].limitsDefined:
                 self.limited_endpoints[endpoint_str].setCount(headers)
-        
+        self.lock.release()
         
     def setEndpointLimitAndCount(self, url, headers):
         self.setEndpointLimit(url, headers)
@@ -159,6 +163,7 @@ class Platform():
         endpoint_limit_needed = False
         platform_limit_needed = False
         
+        self.lock.acquire()
         if len(self.platform_limits.keys()) == 0:
             platform_limit_needed = True
             
@@ -182,7 +187,11 @@ class Platform():
                     self.last_limited_endpoint = endpoint.name
                     self.limited_count -= 1
                     break
+            # Use the platform limit
+            for limit in self.platform_limits:
+                self.platform_limits[limit].use()
                 
+        self.lock.release()
         return url, platform_limit_needed, endpoint_limit_needed
         
         

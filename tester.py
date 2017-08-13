@@ -72,7 +72,7 @@ def testEndpoint():
     assert(endpoint.count == 2)
     assert(endpoint.available())
     
-    headers = {'X-Method-Rate-Limit':'1:0.1,10:1', 'X-Method-Rate-Limit-Count':'0:0.1,10:1'}
+    headers = {'X-Method-Rate-Limit':'1:0.1,10:1', 'X-Method-Rate-Limit-Count':'0:0.1,9:1'}
     endpoint.setLimit(headers)
     assert(endpoint.available())
     assert(endpoint.limitsDefined)
@@ -83,6 +83,9 @@ def testEndpoint():
     assert(endpoint.getResetTime() < time.time())
     
     endpoint.setCount(headers)
+    assert(endpoint.available())
+    endpoint.add(summoner_url)
+    assert(endpoint.get() == summoner_url)
     assert(endpoint.available() == False)
     assert(endpoint.get() == None) # Exceeded limit, returned nothing
     time.sleep(0.1)
@@ -141,15 +144,23 @@ def testPlatform():
     assert(platform.getURL() == (champ_mastery_url, True, True))
     
     
-    headers = {'X-Method-Rate-Limit':'1:0.1,10:1', 'X-Method-Rate-Limit-Count':'0:0.1,10:1',
-               'X-App-Rate-Limit':'5:0.1,40:1', 'X-App-Rate-Limit-Count':'0:0.1,50:1'}
+    headers = {'X-Method-Rate-Limit':'1:0.1,10:1', 'X-Method-Rate-Limit-Count':'0:0.1,9:1',
+               'X-App-Rate-Limit':'5:0.1,40:1', 'X-App-Rate-Limit-Count':'0:0.1,39:1'}
     platform.setLimit(headers)
     platform.setCount(headers)
-    assert(platform.rateLimitOK() == False)
+    assert(platform.rateLimitOK())
     platform.addURL(summoner_url)
+    platform.addURL(summoner_url)
+    assert(platform.getURL() == (summoner_url, False, True))
+    assert(platform.rateLimitOK() == False)
     assert(platform.getURL() == (None, False, False))
+    
     platform = Platform()
+    platform.addURL(summoner_url)
+    platform.addURL(summoner_url)
     platform.setLimitAndCount(headers)
+    assert(platform.rateLimitOK())
+    assert(platform.getURL() == (summoner_url, False, True))
     assert(platform.rateLimitOK() == False)
     platform.addURL(summoner_url)
     assert(platform.getURL() == (None, False, False))
