@@ -24,10 +24,10 @@ def assert_raises(function, args=[]):
 def testLimit():
     limit = Limit()
     assert(limit.ready())
-    assert(limit.resetTime() < time.time())
+    assert(limit.getResetTime() < time.time())
     assert(limit.used == 0)
     limit.use()
-    assert(limit.resetTime() < time.time() + 0.0001)
+    assert(limit.getResetTime() < time.time() + 0.0001)
     assert(limit.used == 1)
     
     limit = Limit(seconds=0.1, limit=1, used=1)
@@ -78,9 +78,9 @@ def testEndpoint():
     assert(endpoint.limitsDefined)
     assert(endpoint.get() == summoner_url)
     assert(endpoint.get() == None) # Exceeded limit, returned nothing
-    assert(endpoint.resetTime() > time.time() + 0.01)
+    assert(endpoint.getResetTime() > time.time() + 0.01)
     time.sleep(0.1)
-    assert(endpoint.resetTime() < time.time())
+    assert(endpoint.getResetTime() < time.time())
     
     endpoint.setCount(headers)
     assert(endpoint.available() == False)
@@ -97,8 +97,79 @@ def testPlatform():
     platform = Platform()
     assert(platform.rateLimitOK())
     assert(platform.hasURL() == False)
+    assert(platform.available() == False) # no URLS
     assert(platform.timeNextAvailable() == None)
     assert(platform.count == 0)
+    assert(platform.getURL() == (None, True, False))
+    
+    summoner_url = 'https://na1.api.riotgames.com/lol/summoner/v3/summoners/by-name/DrCyanide'
+    platform.addURL(summoner_url)
+    assert(platform.count == 1)
+    assert(platform.static_count == 0)
+    assert(platform.limited_count == 1)
+    assert(platform.timeNextAvailable() < time.time())
+    assert(platform.available())
+    
+    static_url = 'https://na1.api.riotgames.com/lol/static-data/v3/champions?locale=en_US&dataById=false'
+    platform.addURL(static_url)
+    assert(platform.count == 2)
+    assert(platform.static_count == 1)
+    assert(platform.limited_count == 1)
+    assert(platform.timeNextAvailable() < time.time())
+    assert(platform.available())
+    
+    # When two are present, static should be pulled first
+    assert(platform.getURL() == (static_url, True, True))
+    assert(platform.count == 1)
+    assert(platform.static_count == 0)
+    assert(platform.getURL() == (summoner_url, True, True))
+    assert(platform.count == 0)
+    
+    platform = Platform()
+    champ_mastery_url = 'https://na1.api.riotgames.com/lol/champion-mastery/v3/champion-masteries/by-summoner/28341307'
+    platform.addURL(summoner_url)
+    platform.addURL(summoner_url)
+    platform.addURL(champ_mastery_url)
+    platform.addURL(champ_mastery_url)
+    assert(platform.count == 4)
+    assert(platform.last_limited_endpoint == '')
+    # summoner_url was added first, so that endpoint gets pulled first
+    # it then rotates to champ_mastery_url, the next endpoint added
+    assert(platform.getURL() == (summoner_url, True, True))
+    assert(platform.getURL() == (champ_mastery_url, True, True))
+    assert(platform.getURL() == (summoner_url, True, True))
+    assert(platform.getURL() == (champ_mastery_url, True, True))
+    
+    
+    headers = {'X-Method-Rate-Limit':'1:0.1,10:1', 'X-Method-Rate-Limit-Count':'0:0.1,10:1',
+               'X-App-Rate-Limit':'5:0.1,40:1', 'X-App-Rate-Limit-Count':'0:0.1,50:1'}
+    platform.setLimit(headers)
+    platform.setCount(headers)
+    assert(platform.rateLimitOK() == False)
+    platform.addURL(summoner_url)
+    assert(platform.getURL() == (None, False, False))
+    platform = Platform()
+    platform.setLimitAndCount(headers)
+    assert(platform.rateLimitOK() == False)
+    platform.addURL(summoner_url)
+    assert(platform.getURL() == (None, False, False))
+    
+    
+    platform = Platform()
+    platform.addURL(summoner_url)
+    platform.setEndpointLimit(summoner_url, headers)
+    platform.setEndpointCount(summoner_url, headers)
+    assert(platform.getURL() == (None, True, False))
+    platform = Platform()
+    platform.addURL(summoner_url)
+    platform.setEndpointLimitAndCount(summoner_url, headers)
+    assert(platform.getURL() == (None, True, False))
+    
+    platform = Platform()
+    platform.addURL(summoner_url)
+    platform.setLimitAndCount(headers)
+    platform.setEndpointLimitAndCount(summoner_url, headers)
+    assert(platform.getURL() == (None, False, False))
     
     print('Platform tests pass')
 

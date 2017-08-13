@@ -45,9 +45,9 @@ class Endpoint():
             for limit in limits:
                 requests, seconds = limit.split(':')
                 if seconds in self.limits:
-                    self.limits[seconds].limit = int(requests)
+                    self.limits[seconds].setLimit(seconds, requests)
                 else:
-                    self.limits[seconds] = Limit(float(seconds), int(requests))
+                    self.limits[seconds] = Limit(seconds, requests)
             
     
     def setCount(self, headers):
@@ -56,7 +56,7 @@ class Endpoint():
             for limit in limits:
                 used, seconds = limit.split(':')
                 if seconds in self.limits:
-                    self.limits[seconds].used = int(used)
+                    self.limits[seconds].setUsed(used)
                 
                 
     def add(self, url):
@@ -81,11 +81,11 @@ class Endpoint():
     def count(self):
         return self.queue.qsize()
     
-    def resetTime(self):
+    def getResetTime(self):
         r_time = time.time()
         for limit in self.limits:
             if not self.limits[limit].ready():
-                t = self.limits[limit].resetTime()
+                t = self.limits[limit].getResetTime()
                 if t > r_time:
                     r_time = t
         return r_time
