@@ -1,5 +1,5 @@
 import time
-from multiprocessing import Queue, Lock
+from multiprocessing import Lock
 from Limit import Limit
 from Endpoint import Endpoint
 
@@ -164,33 +164,35 @@ class Platform():
         platform_limit_needed = False
         
         self.lock.acquire()
-        if len(self.platform_limits.keys()) == 0:
-            platform_limit_needed = True
-            
-        if self.static_count > 0:
-            # Static data effects multiple other endpoints, so these always get priority
-            for endpoint_str in self.static_endpoints:
-                endpoint = self.static_endpoints[endpoint_str]
-                if endpoint.available() and endpoint.count > 0:
-                    url = endpoint.get()
-                    endpoint_limit_needed = not endpoint.limitsDefined
-                    self.static_count -= 1
-                    break
-        elif self.limited_count > 0 and self.rateLimitOK():
-            # Actually need to rotate these
-            search_order = self.getSearchOrder()
-            for endpoint_str in search_order:
-                endpoint = self.limited_endpoints[endpoint_str]
-                if endpoint.available() and endpoint.count > 0:
-                    url = endpoint.get()
-                    endpoint_limit_needed = not endpoint.limitsDefined
-                    self.last_limited_endpoint = endpoint.name
-                    self.limited_count -= 1
-                    break
-            # Use the platform limit
-            for limit in self.platform_limits:
-                self.platform_limits[limit].use()
+        try:
+            if len(self.platform_limits.keys()) == 0:
+                platform_limit_needed = True
                 
+            if self.static_count > 0:
+                # Static data effects multiple other endpoints, so these always get priority
+                for endpoint_str in self.static_endpoints:
+                    endpoint = self.static_endpoints[endpoint_str]
+                    if endpoint.available() and endpoint.count > 0:
+                        url = endpoint.get()
+                        endpoint_limit_needed = not endpoint.limitsDefined
+                        self.static_count -= 1
+                        break
+            elif self.limited_count > 0 and self.rateLimitOK():
+                # Actually need to rotate these
+                search_order = self.getSearchOrder()
+                for endpoint_str in search_order:
+                    endpoint = self.limited_endpoints[endpoint_str]
+                    if endpoint.available() and endpoint.count > 0:
+                        url = endpoint.get()
+                        endpoint_limit_needed = not endpoint.limitsDefined
+                        self.last_limited_endpoint = endpoint.name
+                        self.limited_count -= 1
+                        break
+                # Use the platform limit
+                for limit in self.platform_limits:
+                    self.platform_limits[limit].use()
+        except Exception as e:
+            print('Platform %s: Exception getting URL\n%s'%(self.slug, e))
         self.lock.release()
         return url, platform_limit_needed, endpoint_limit_needed
         

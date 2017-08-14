@@ -43,7 +43,7 @@ def testLimit():
     
     
 def testEndpoint():
-    summoner_url = 'https://na1.api.riotgames.com/lol/summoner/v3/summoners/by-name/DrCyanide'
+    summoner_url = 'https://na1.api.riotgames.com/lol/summoner/v3/summoners/by-name/SomeSummonerName'
     endpoint_str = Endpoint.identifyEndpoint(summoner_url)
     assert(endpoint_str == 'lol/summoner/v3/summoners/by-name')
     
@@ -73,6 +73,7 @@ def testEndpoint():
     assert(endpoint.available())
     
     headers = {'X-Method-Rate-Limit':'1:0.1,10:1', 'X-Method-Rate-Limit-Count':'0:0.1,9:1'}
+    endpoint.limitsDefined
     endpoint.setLimit(headers)
     assert(endpoint.available())
     assert(endpoint.limitsDefined)
@@ -105,7 +106,7 @@ def testPlatform():
     assert(platform.count == 0)
     assert(platform.getURL() == (None, True, False))
     
-    summoner_url = 'https://na1.api.riotgames.com/lol/summoner/v3/summoners/by-name/DrCyanide'
+    summoner_url = 'https://na1.api.riotgames.com/lol/summoner/v3/summoners/by-name/SomeSummonerName'
     platform.addURL(summoner_url)
     assert(platform.count == 1)
     assert(platform.static_count == 0)
@@ -144,8 +145,10 @@ def testPlatform():
     assert(platform.getURL() == (champ_mastery_url, True, True))
     
     
-    headers = {'X-Method-Rate-Limit':'1:0.1,10:1', 'X-Method-Rate-Limit-Count':'0:0.1,9:1',
-               'X-App-Rate-Limit':'5:0.1,40:1', 'X-App-Rate-Limit-Count':'0:0.1,39:1'}
+    headers = {'X-Method-Rate-Limit':'1:0.1,10:1', 
+               'X-Method-Rate-Limit-Count':'0:0.1,9:1',
+               'X-App-Rate-Limit':'5:0.1,40:1', 
+               'X-App-Rate-Limit-Count':'0:0.1,39:1'}
     platform.setLimit(headers)
     platform.setCount(headers)
     assert(platform.rateLimitOK())
@@ -164,27 +167,57 @@ def testPlatform():
     assert(platform.rateLimitOK() == False)
     platform.addURL(summoner_url)
     assert(platform.getURL() == (None, False, False))
-    
-    
+
+   
     platform = Platform()
+    platform.addURL(summoner_url)
     platform.addURL(summoner_url)
     platform.setEndpointLimit(summoner_url, headers)
     platform.setEndpointCount(summoner_url, headers)
+    assert(platform.getURL() == (summoner_url, True, False))
     assert(platform.getURL() == (None, True, False))
+    
     platform = Platform()
     platform.addURL(summoner_url)
     platform.setEndpointLimitAndCount(summoner_url, headers)
-    assert(platform.getURL() == (None, True, False))
+    assert(platform.getURL() == (summoner_url, True, False))
     
     platform = Platform()
     platform.addURL(summoner_url)
     platform.setLimitAndCount(headers)
     platform.setEndpointLimitAndCount(summoner_url, headers)
-    assert(platform.getURL() == (None, False, False))
+    assert(platform.getURL() == (summoner_url, False, False))
     
     print('Platform tests pass')
 
 
+def testScenario():
+    print('Starting scenario tests...')
+    # TODO: Have a stack of URLs and headers, then go through the normal process
+    # Mimic a normal flow
+    
+    platform = Platform()
+    summoner_url = 'https://na1.api.riotgames.com/lol/summoner/v3/summoners/by-name/SomeSummonerName'
+    platform.addURL(summoner_url)
+    assert(platform.count == 1)
+    url, platform_limit_needed, endpoint_limit_needed = platform.getURL()
+    assert(url == summoner_url)
+    assert(platform_limit_needed == True)
+    assert(endpoint_limit_needed == True)
+    
+    headers = {'X-Method-Rate-Limit':'1:0.1,10:1', 
+               'X-Method-Rate-Limit-Count':'1:0.1,1:1',
+               'X-App-Rate-Limit':'5:0.1,40:1', 
+               'X-App-Rate-Limit-Count':'1:0.1,1:1'}
+    platform.setLimitAndCount(headers)
+    platform.setEndpointLimitAndCount(url, headers)
+    assert(platform.available() == False) # Method limit hit
+    matchlist_url = 'https://na1.api.riotgames.com/lol/match/v3/matchlists/by-account/123456789'
+    platform.addURL(matchlist_url)
+    assert(platform.available())
+    
+    print('Scenario tests pass')
+    
 def testRateLimiter():
     with open(config_path) as f:
         data = f.read()
@@ -210,5 +243,6 @@ if __name__ == '__main__':
     testLimit()
     testEndpoint()
     testPlatform()
+    testScenario()
     # testRateLimiter()
     

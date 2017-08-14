@@ -1,11 +1,14 @@
 import time
-from multiprocessing import Queue, Lock
+#from multiprocessing import Queue, Lock
+from multiprocessing import Lock
+from collections import deque
 from Limit import Limit
 
 class Endpoint():
     def __init__(self, name='', first_request=None):
         self.name = name
-        self.queue = Queue()
+        #self.url_queue = Queue()
+        self.url_deque = deque()
         self.lock = Lock()
         self.limits = {}
         
@@ -40,33 +43,39 @@ class Endpoint():
         return False
       
     def setLimit(self, headers):
-        if 'X-Method-Rate-Limit' in headers:
-            limits = headers['X-Method-Rate-Limit'].split(',')
-            for limit in limits:
-                requests, seconds = limit.split(':')
-                if seconds in self.limits:
-                    self.limits[seconds].setLimit(seconds, requests)
-                else:
-                    self.limits[seconds] = Limit(seconds, requests)
-            
+        try:
+            if 'X-Method-Rate-Limit' in headers:
+                limits = headers['X-Method-Rate-Limit'].split(',')
+                for limit in limits:
+                    requests, seconds = limit.split(':')
+                    if seconds in self.limits:
+                        self.limits[seconds].setLimit(seconds, requests)
+                    else:
+                        self.limits[seconds] = Limit(seconds, requests)
+        except Exception as e:
+            print('Endpoint - setLimit: e'%e)
     
     def setCount(self, headers):
-        if 'X-Method-Rate-Limit-Count' in headers:
-            limits = headers['X-Method-Rate-Limit-Count'].split(',')
-            for limit in limits:
-                used, seconds = limit.split(':')
-                if seconds in self.limits:
-                    self.limits[seconds].setUsed(used)
-                
+        try:
+            if 'X-Method-Rate-Limit-Count' in headers:
+                limits = headers['X-Method-Rate-Limit-Count'].split(',')
+                for limit in limits:
+                    used, seconds = limit.split(':')
+                    if seconds in self.limits:
+                        self.limits[seconds].setUsed(used)
+        except Exception as e:
+            print('Endpoint - setCount: %s'%e)
                 
     def add(self, url):
+        # TODO: Add a way to add to the front of the deque
         if self.name == '':
             self.name = Endpoint.identifyEndpoint(url)
         else:
             if self.name != Endpoint.identifyEndpoint(url):
                 raise Exception('Invalid URL, does not match endpoint')
         self.lock.acquire()
-        self.queue.put(url)
+        #self.url_queue.put(url)
+        self.url_deque.append(url)
         self.lock.release()
         
         
@@ -79,7 +88,8 @@ class Endpoint():
     
     @property
     def count(self):
-        return self.queue.qsize()
+        #return self.url_queue.qsize()
+        return len(self.url_deque)
     
     def getResetTime(self):
         r_time = time.time()
@@ -93,7 +103,7 @@ class Endpoint():
         
     def get(self):
         self.lock.acquire()
-        if self.queue.qsize() == 0:
+        if self.count == 0:
             self.lock.release()
             return None
             
@@ -104,7 +114,8 @@ class Endpoint():
         for limit in self.limits:
             self.limits[limit].use()
             
-        url = self.queue.get()
+        #url = self.url_queue.get()
+        url = self.url_deque.popleft()
         self.lock.release()
         return url
          
