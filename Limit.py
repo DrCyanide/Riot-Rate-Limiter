@@ -17,17 +17,14 @@ class Limit():
         
         
     def ready(self):
-        if self.used < self.limit or self.limit < 0:
+        if self.limit < 0 or self.used < self.limit:
             return True
         else:
             if (self.start + self.seconds) < time.time():
                 # Time Limit reset
                 self.used = 0
                 return True
-            if self.used < self.limit:
-                return True
-            else:
-                return False
+        return False
                 
                 
     def setLimit(self, seconds, limit):

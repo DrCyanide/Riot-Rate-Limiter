@@ -19,7 +19,9 @@ class Endpoint():
         
     @classmethod
     def identifyEndpoint(cls, url):
-        url = url[:url.find('?')].lower() # Remove the query string
+        if '?' in url: # Remove the query string
+            url = url[:url.find('?')]
+        url = url.lower()
         split_url = url.split('/')
         endpoint = ''
         try:
@@ -80,11 +82,22 @@ class Endpoint():
         
         
     def available(self):
-        for limit in self.limits:
-            if not self.limits[limit].ready():
+        if self.count == 0:
+            return False
+        for limit_str in self.limits:
+            if not self.limits[limit_str].ready():
                 return False
+        #print(self.getUsage())
         return True
         
+    def getUsage(self):
+        strs = []
+        if len(self.limits.keys()) == 0:
+            return 'No limits defined'
+        for limit_str in self.limits:
+            s = '%s:%s'%(self.limits[limit_str].used, self.limits[limit_str].limit)
+            strs.append(s)
+        return ','.join(strs)
     
     @property
     def count(self):

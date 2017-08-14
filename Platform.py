@@ -96,11 +96,9 @@ class Platform():
         self.lock.acquire()
         endpoint_str = Endpoint.identifyEndpoint(url)
         if 'static' in endpoint_str:
-            if not self.static_endpoints[endpoint_str].limitsDefined:
-                self.static_endpoints[endpoint_str].setCount(headers)
+            self.static_endpoints[endpoint_str].setCount(headers)
         else:
-            if not self.limited_endpoints[endpoint_str].limitsDefined:
-                self.limited_endpoints[endpoint_str].setCount(headers)
+            self.limited_endpoints[endpoint_str].setCount(headers)
         self.lock.release()
         
     def setEndpointLimitAndCount(self, url, headers):
@@ -143,9 +141,18 @@ class Platform():
         elif self.limited_count > 0 and self.rateLimitOK:
             for endpoint_str in self.limited_endpoints:
                 if self.limited_endpoints[endpoint_str].available():
+                    #print(endpoint_str)
                     return True
         return False
         
+        
+    def getUsage(self):
+        usage = {'static':{}, 'limited':{}}
+        for endpoint_str in self.static_endpoints:
+            usage['static'][endpoint_str] = self.static_endpoints[endpoint_str].getUsage()
+        for endpoint_str in self.limited_endpoints:
+            usage['limited'][endpoint_str] = self.limited_endpoints[endpoint_str].getUsage()
+        return usage
         
     def getSearchOrder(self):
         if self.last_limited_endpoint == '':

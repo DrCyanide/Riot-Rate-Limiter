@@ -51,10 +51,16 @@ def testEndpoint():
     endpoint_str = Endpoint.identifyEndpoint(static_url)
     assert(endpoint_str == 'lol/static-data/v3/champions')
     
+    # There was an issue with id's 1 through 9 ending with a '/'
+    match_example = 'https://na1.api.riotgames.com/lol/match/v3/matches/'
+    for i in range(1, 50):
+        url = '%s%s'%(match_example, i)
+        assert(Endpoint.identifyEndpoint(url) == 'lol/match/v3/matches')
+    
     endpoint = Endpoint()
     assert(endpoint.limitsDefined == False)
     assert(endpoint.count == 0)
-    assert(endpoint.available())
+    assert(endpoint.available() == False) # No urls
     assert(endpoint.name == '')
     
     endpoint.add(summoner_url)
@@ -73,7 +79,7 @@ def testEndpoint():
     assert(endpoint.available())
     
     headers = {'X-Method-Rate-Limit':'1:0.1,10:1', 'X-Method-Rate-Limit-Count':'0:0.1,9:1'}
-    endpoint.limitsDefined
+    assert(endpoint.limitsDefined == False)
     endpoint.setLimit(headers)
     assert(endpoint.available())
     assert(endpoint.limitsDefined)
@@ -193,7 +199,6 @@ def testPlatform():
 
 def testScenario():
     print('Starting scenario tests...')
-    # TODO: Have a stack of URLs and headers, then go through the normal process
     # Mimic a normal flow
     
     platform = Platform()
@@ -214,7 +219,95 @@ def testScenario():
     assert(platform.available() == False) # Method limit hit
     matchlist_url = 'https://na1.api.riotgames.com/lol/match/v3/matchlists/by-account/123456789'
     platform.addURL(matchlist_url)
+    assert(platform.available()) # New endpoint without a method limit hit
+    url, platform_limit_needed, endpoint_limit_needed = platform.getURL()
+    assert(url == matchlist_url)
+    assert(platform_limit_needed == False)
+    assert(endpoint_limit_needed == True)
+    
+    headers = {'X-Method-Rate-Limit':'1:0.1,10:1', 
+               'X-Method-Rate-Limit-Count':'1:0.1,1:1',
+               'X-App-Rate-Limit':'5:0.1,40:1', 
+               'X-App-Rate-Limit-Count':'2:0.1,2:1'}
+    platform.setEndpointLimitAndCount(url, headers)
+    assert(platform.available() == False) # Method limit hit
+    match_example = 'https://na1.api.riotgames.com/lol/match/v3/matches/'
+    #print('Generating Matches')
+    for matchid in range(1, 50):
+        url = '%s%s'%(match_example, matchid)
+        #print('%s -> %s'%(url, Endpoint.identifyEndpoint(url)))
+        platform.addURL(url)
+    assert(platform.count == 49)
+    url, platform_limit_needed, endpoint_limit_needed = platform.getURL()
+    assert(url == '%s%s'%(match_example,1))
+    assert(platform_limit_needed == False)
+    assert(endpoint_limit_needed == True)
+    
+    headers = {'X-Method-Rate-Limit':'1:0.1,5:1', # Note: 5 per 1 second
+               'X-Method-Rate-Limit-Count':'1:0.1,1:1',
+               'X-App-Rate-Limit':'5:0.1,40:1', 
+               'X-App-Rate-Limit-Count':'3:0.1,3:1'}
+    platform.setEndpointLimitAndCount('%s%s'%(match_example,1), headers)
+    #print('Checking available')
+    #print(platform.getUsage())
+    assert(platform.available() == False) # Method limit 1:0.1, 1:1
+    time.sleep(0.1) # Time = 0.1
     assert(platform.available())
+    url, platform_limit_needed, endpoint_limit_needed = platform.getURL()
+    assert(url == '%s%s'%(match_example,2))
+    assert(platform_limit_needed == False)
+    assert(endpoint_limit_needed == False)
+    
+    assert(platform.available() == False) # Method limit 1:0.1, 2:1
+    time.sleep(0.1) # Time = 0.2
+    url, platform_limit_needed, endpoint_limit_needed = platform.getURL()
+    assert(url == '%s%s'%(match_example,3))
+    assert(platform_limit_needed == False)
+    assert(endpoint_limit_needed == False)
+    
+    assert(platform.available() == False) # Method limit 1:0.1, 3:1
+    time.sleep(0.1) # Time = 0.3
+    url, platform_limit_needed, endpoint_limit_needed = platform.getURL()
+    assert(url == '%s%s'%(match_example,4))
+    assert(platform_limit_needed == False)
+    assert(endpoint_limit_needed == False)
+    
+    assert(platform.available() == False) # Method limit 1:0.1, 4:1
+    time.sleep(0.1) # Time = 0.4
+    url, platform_limit_needed, endpoint_limit_needed = platform.getURL()
+    assert(url == '%s%s'%(match_example,5))
+    assert(platform_limit_needed == False)
+    assert(endpoint_limit_needed == False)
+    
+    assert(platform.available() == False) # Method Limit 1:0.1, 5:1
+    time.sleep(0.1) # Time = 0.5
+    url, platform_limit_needed, endpoint_limit_needed = platform.getURL()
+    assert(url == None)
+    assert(platform_limit_needed == False)
+    assert(endpoint_limit_needed == False)
+    
+    assert(platform.available() == False) # Method Limit 0:0.1, 5:1
+    time.sleep(0.1) # Time = 0.6
+    assert(platform.available() == False) # Method Limit 0:0.1, 5:1
+    time.sleep(0.1) # Time = 0.7
+    assert(platform.available() == False) # Method Limit 0:0.1, 5:1
+    time.sleep(0.1) # Time = 0.8
+    assert(platform.available() == False) # Method Limit 0:0.1, 5:1
+    time.sleep(0.1) # Time = 0.9
+    assert(platform.available() == False) # Method Limit 0:0.1, 5:1
+    time.sleep(0.1) # Time = 1.0
+    assert(platform.available()) # Method Limit 0:0.1, 0:1
+    
+    url, platform_limit_needed, endpoint_limit_needed = platform.getURL()
+    assert(url == '%s%s'%(match_example,6))
+    platform.addURL(summoner_url)
+    assert(platform.available())
+    url, platform_limit_needed, endpoint_limit_needed = platform.getURL()
+    assert(url == summoner_url)
+    assert(platform.available() == False)
+    time.sleep(0.1)
+    url, platform_limit_needed, endpoint_limit_needed = platform.getURL()
+    assert(url == '%s%s'%(match_example,7))
     
     print('Scenario tests pass')
     
