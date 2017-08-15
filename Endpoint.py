@@ -113,6 +113,10 @@ class Endpoint():
                     r_time = t
         return r_time
         
+    def timeNextAvailable(self):
+        if self.available():
+            return time.time()
+        return self.getResetTime()
         
     def get(self):
         self.lock.acquire()

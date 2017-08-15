@@ -298,6 +298,7 @@ def testScenario():
     time.sleep(0.1) # Time = 1.0
     assert(platform.available()) # Method Limit 0:0.1, 0:1
     
+    # Check that requests from other platforms still go through just fine without causing a delay
     url, platform_limit_needed, endpoint_limit_needed = platform.getURL()
     assert(url == '%s%s'%(match_example,6))
     platform.addURL(summoner_url)
@@ -309,7 +310,25 @@ def testScenario():
     url, platform_limit_needed, endpoint_limit_needed = platform.getURL()
     assert(url == '%s%s'%(match_example,7))
     
+    print('First 8 passed')
+    # Automatically continue
+    next = 8
+    while platform.count > 0:
+        url, platform_limit_needed, endpoint_limit_needed = grabWhenReady(platform)
+        assert(url == '%s%s'%(match_example, next))
+        print(next)
+        next += 1
+    
     print('Scenario tests pass')
+    
+def grabWhenReady(platform):
+    next = platform.timeNextAvailable()
+    if next == None:
+        print('No next time available, no records!')
+        return 
+    if next > time.time():
+        time.sleep(next - time.time())
+    return platform.getURL()
     
 def testRateLimiter():
     with open(config_path) as f:

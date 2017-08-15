@@ -106,16 +106,28 @@ class Platform():
         self.setEndpointCount(url, headers)
         
         
+    def getResetTime(self):
+        r_time = time.time()
+        for limit_str in self.platform_limits:
+            if not self.platform_limits[limit_str].ready():
+                t = self.platform_limits[limit_str].getResetTime()
+                if t > r_time:
+                    r_time = t
+        return r_time
+        
+        
     def _soonestAvailable(self, endpoints):
         soonest = None
         for endpoint_str in endpoints:
+            if endpoints[endpoint_str].count == 0:
+                continue
             if endpoints[endpoint_str].available():
                 return time.time()
             else:
                 if soonest == None:
-                    soonest = endpoints[endpoint_str].getResetTime()
+                    soonest = endpoints[endpoint_str].timeNextAvailable()
                 else:
-                    t = endpoints[endpoint_str].getResetTime()
+                    t = endpoints[endpoint_str].timeNextAvailable()
                     if t < soonest:
                         soonest = t
         return soonest
@@ -127,8 +139,11 @@ class Platform():
         # Use this so the Ticker isn't constantly hammering Platform
         if self.static_count > 0:
             return self._soonestAvailable(self.static_endpoints)
-        elif self.limited_count > 0 and self.rateLimitOK():
-            return self._soonestAvailable(self.limited_endpoints)
+        elif self.limited_count > 0:
+            if self.rateLimitOK():
+                return self._soonestAvailable(self.limited_endpoints)
+            else:
+                return self.getResetTime()
         else:
             return None # No records!
         
