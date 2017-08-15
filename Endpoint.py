@@ -1,6 +1,6 @@
 import time
 #from multiprocessing import Queue, Lock
-from multiprocessing import Lock
+#from multiprocessing import Lock
 from collections import deque
 from Limit import Limit
 
@@ -9,7 +9,7 @@ class Endpoint():
         self.name = name
         #self.url_queue = Queue()
         self.url_deque = deque()
-        self.lock = Lock()
+        #self.lock = Lock()
         self.limits = {}
         
         if first_request == None:
@@ -68,17 +68,28 @@ class Endpoint():
         except Exception as e:
             print('Endpoint - setCount: %s'%e)
                 
-    def add(self, url):
+    def addURL(self, url):
         # TODO: Add a way to add to the front of the deque
         if self.name == '':
             self.name = Endpoint.identifyEndpoint(url)
         else:
             if self.name != Endpoint.identifyEndpoint(url):
                 raise Exception('Invalid URL, does not match endpoint')
-        self.lock.acquire()
+        #self.lock.acquire()
         #self.url_queue.put(url)
         self.url_deque.append(url)
-        self.lock.release()
+        #self.lock.release()
+        
+    def addData(self, data):
+        if self.name == '':
+            self.name = Endpoint.identifyEndpoint(data['url'])
+        else:
+            if self.name != Endpoint.identifyEndpoint(data['url']):
+                raise Exception('Invalid URL, does not match endpoint')
+        #self.lock.acquire()
+        #self.url_queue.put(url)
+        self.url_deque.append(data)
+        #self.lock.release()
         
         
     def available(self):
@@ -119,13 +130,13 @@ class Endpoint():
         return self.getResetTime()
         
     def get(self):
-        self.lock.acquire()
+        #self.lock.acquire()
         if self.count == 0:
-            self.lock.release()
+            #self.lock.release()
             return None
             
         if not self.available():
-            self.lock.release()
+            #self.lock.release()
             return None
                 
         for limit in self.limits:
@@ -133,7 +144,7 @@ class Endpoint():
             
         #url = self.url_queue.get()
         url = self.url_deque.popleft()
-        self.lock.release()
+        #self.lock.release()
         return url
          
         

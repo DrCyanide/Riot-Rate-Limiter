@@ -7,7 +7,7 @@ from Platform import Platform
 
 config_path = 'config.json'
 target_url = 'https://na1.api.riotgames.com/lol/champion-mastery/v3/champion-masteries/by-summoner/28341307'
-server_url = 'http://'
+server_connection = 'http://'
 
 
 def assert_raises(function, args=[]):
@@ -63,7 +63,7 @@ def testEndpoint():
     assert(endpoint.available() == False) # No urls
     assert(endpoint.name == '')
     
-    endpoint.add(summoner_url)
+    endpoint.addURL(summoner_url)
     assert(endpoint.count == 1)
     assert(endpoint.available())
     assert(endpoint.name == 'lol/summoner/v3/summoners/by-name')
@@ -71,10 +71,10 @@ def testEndpoint():
     assert(endpoint.count == 0)
     assert(endpoint.get() == None)
     
-    assert_raises(endpoint.add, [static_url])
+    assert_raises(endpoint.addURL, [static_url])
     
-    endpoint.add(summoner_url)
-    endpoint.add(summoner_url)
+    endpoint.addURL(summoner_url)
+    endpoint.addURL(summoner_url)
     assert(endpoint.count == 2)
     assert(endpoint.available())
     
@@ -91,7 +91,7 @@ def testEndpoint():
     
     endpoint.setCount(headers)
     assert(endpoint.available())
-    endpoint.add(summoner_url)
+    endpoint.addURL(summoner_url)
     assert(endpoint.get() == summoner_url)
     assert(endpoint.available() == False)
     assert(endpoint.get() == None) # Exceeded limit, returned nothing
@@ -110,7 +110,7 @@ def testPlatform():
     assert(platform.available() == False) # no URLS
     assert(platform.timeNextAvailable() == None)
     assert(platform.count == 0)
-    assert(platform.getURL() == (None, True, False))
+    assert(platform.get() == (None, True, False))
     
     summoner_url = 'https://na1.api.riotgames.com/lol/summoner/v3/summoners/by-name/SomeSummonerName'
     platform.addURL(summoner_url)
@@ -129,10 +129,10 @@ def testPlatform():
     assert(platform.available())
     
     # When two are present, static should be pulled first
-    assert(platform.getURL() == (static_url, True, True))
+    assert(platform.get() == (static_url, True, True))
     assert(platform.count == 1)
     assert(platform.static_count == 0)
-    assert(platform.getURL() == (summoner_url, True, True))
+    assert(platform.get() == (summoner_url, True, True))
     assert(platform.count == 0)
     
     platform = Platform()
@@ -145,10 +145,10 @@ def testPlatform():
     assert(platform.last_limited_endpoint == '')
     # summoner_url was added first, so that endpoint gets pulled first
     # it then rotates to champ_mastery_url, the next endpoint added
-    assert(platform.getURL() == (summoner_url, True, True))
-    assert(platform.getURL() == (champ_mastery_url, True, True))
-    assert(platform.getURL() == (summoner_url, True, True))
-    assert(platform.getURL() == (champ_mastery_url, True, True))
+    assert(platform.get() == (summoner_url, True, True))
+    assert(platform.get() == (champ_mastery_url, True, True))
+    assert(platform.get() == (summoner_url, True, True))
+    assert(platform.get() == (champ_mastery_url, True, True))
     
     
     headers = {'X-Method-Rate-Limit':'1:0.1,10:1', 
@@ -160,19 +160,19 @@ def testPlatform():
     assert(platform.rateLimitOK())
     platform.addURL(summoner_url)
     platform.addURL(summoner_url)
-    assert(platform.getURL() == (summoner_url, False, True))
+    assert(platform.get() == (summoner_url, False, True))
     assert(platform.rateLimitOK() == False)
-    assert(platform.getURL() == (None, False, False))
+    assert(platform.get() == (None, False, False))
     
     platform = Platform()
     platform.addURL(summoner_url)
     platform.addURL(summoner_url)
     platform.setLimitAndCount(headers)
     assert(platform.rateLimitOK())
-    assert(platform.getURL() == (summoner_url, False, True))
+    assert(platform.get() == (summoner_url, False, True))
     assert(platform.rateLimitOK() == False)
     platform.addURL(summoner_url)
-    assert(platform.getURL() == (None, False, False))
+    assert(platform.get() == (None, False, False))
 
    
     platform = Platform()
@@ -180,19 +180,19 @@ def testPlatform():
     platform.addURL(summoner_url)
     platform.setEndpointLimit(summoner_url, headers)
     platform.setEndpointCount(summoner_url, headers)
-    assert(platform.getURL() == (summoner_url, True, False))
-    assert(platform.getURL() == (None, True, False))
+    assert(platform.get() == (summoner_url, True, False))
+    assert(platform.get() == (None, True, False))
     
     platform = Platform()
     platform.addURL(summoner_url)
     platform.setEndpointLimitAndCount(summoner_url, headers)
-    assert(platform.getURL() == (summoner_url, True, False))
+    assert(platform.get() == (summoner_url, True, False))
     
     platform = Platform()
     platform.addURL(summoner_url)
     platform.setLimitAndCount(headers)
     platform.setEndpointLimitAndCount(summoner_url, headers)
-    assert(platform.getURL() == (summoner_url, False, False))
+    assert(platform.get() == (summoner_url, False, False))
     
     print('Platform tests pass')
 
@@ -205,7 +205,7 @@ def testScenario():
     summoner_url = 'https://na1.api.riotgames.com/lol/summoner/v3/summoners/by-name/SomeSummonerName'
     platform.addURL(summoner_url)
     assert(platform.count == 1)
-    url, platform_limit_needed, endpoint_limit_needed = platform.getURL()
+    url, platform_limit_needed, endpoint_limit_needed = platform.get()
     assert(url == summoner_url)
     assert(platform_limit_needed == True)
     assert(endpoint_limit_needed == True)
@@ -220,7 +220,7 @@ def testScenario():
     matchlist_url = 'https://na1.api.riotgames.com/lol/match/v3/matchlists/by-account/123456789'
     platform.addURL(matchlist_url)
     assert(platform.available()) # New endpoint without a method limit hit
-    url, platform_limit_needed, endpoint_limit_needed = platform.getURL()
+    url, platform_limit_needed, endpoint_limit_needed = platform.get()
     assert(url == matchlist_url)
     assert(platform_limit_needed == False)
     assert(endpoint_limit_needed == True)
@@ -238,7 +238,7 @@ def testScenario():
         #print('%s -> %s'%(url, Endpoint.identifyEndpoint(url)))
         platform.addURL(url)
     assert(platform.count == 49)
-    url, platform_limit_needed, endpoint_limit_needed = platform.getURL()
+    url, platform_limit_needed, endpoint_limit_needed = platform.get()
     assert(url == '%s%s'%(match_example,1))
     assert(platform_limit_needed == False)
     assert(endpoint_limit_needed == True)
@@ -253,35 +253,35 @@ def testScenario():
     assert(platform.available() == False) # Method limit 1:0.1, 1:1
     time.sleep(0.1) # Time = 0.1
     assert(platform.available())
-    url, platform_limit_needed, endpoint_limit_needed = platform.getURL()
+    url, platform_limit_needed, endpoint_limit_needed = platform.get()
     assert(url == '%s%s'%(match_example,2))
     assert(platform_limit_needed == False)
     assert(endpoint_limit_needed == False)
     
     assert(platform.available() == False) # Method limit 1:0.1, 2:1
     time.sleep(0.1) # Time = 0.2
-    url, platform_limit_needed, endpoint_limit_needed = platform.getURL()
+    url, platform_limit_needed, endpoint_limit_needed = platform.get()
     assert(url == '%s%s'%(match_example,3))
     assert(platform_limit_needed == False)
     assert(endpoint_limit_needed == False)
     
     assert(platform.available() == False) # Method limit 1:0.1, 3:1
     time.sleep(0.1) # Time = 0.3
-    url, platform_limit_needed, endpoint_limit_needed = platform.getURL()
+    url, platform_limit_needed, endpoint_limit_needed = platform.get()
     assert(url == '%s%s'%(match_example,4))
     assert(platform_limit_needed == False)
     assert(endpoint_limit_needed == False)
     
     assert(platform.available() == False) # Method limit 1:0.1, 4:1
     time.sleep(0.1) # Time = 0.4
-    url, platform_limit_needed, endpoint_limit_needed = platform.getURL()
+    url, platform_limit_needed, endpoint_limit_needed = platform.get()
     assert(url == '%s%s'%(match_example,5))
     assert(platform_limit_needed == False)
     assert(endpoint_limit_needed == False)
     
     assert(platform.available() == False) # Method Limit 1:0.1, 5:1
     time.sleep(0.1) # Time = 0.5
-    url, platform_limit_needed, endpoint_limit_needed = platform.getURL()
+    url, platform_limit_needed, endpoint_limit_needed = platform.get()
     assert(url == None)
     assert(platform_limit_needed == False)
     assert(endpoint_limit_needed == False)
@@ -299,18 +299,18 @@ def testScenario():
     assert(platform.available()) # Method Limit 0:0.1, 0:1
     
     # Check that requests from other platforms still go through just fine without causing a delay
-    url, platform_limit_needed, endpoint_limit_needed = platform.getURL()
+    url, platform_limit_needed, endpoint_limit_needed = platform.get()
     assert(url == '%s%s'%(match_example,6))
     platform.addURL(summoner_url)
     assert(platform.available())
-    url, platform_limit_needed, endpoint_limit_needed = platform.getURL()
+    url, platform_limit_needed, endpoint_limit_needed = platform.get()
     assert(url == summoner_url)
     assert(platform.available() == False)
     time.sleep(0.1)
-    url, platform_limit_needed, endpoint_limit_needed = platform.getURL()
+    url, platform_limit_needed, endpoint_limit_needed = platform.get()
     assert(url == '%s%s'%(match_example,7))
     
-    print('First 8 passed')
+    print('First 8 manual tests passed, the rest should be staggered')
     # Automatically continue
     next = 8
     while platform.count > 0:
@@ -328,14 +328,14 @@ def grabWhenReady(platform):
         return 
     if next > time.time():
         time.sleep(next - time.time())
-    return platform.getURL()
+    return platform.get()
     
 def testRateLimiter():
     with open(config_path) as f:
         data = f.read()
         try:
             config = json.loads(data)
-            server_url += '%s:%s'%(config['server']['host'], config['server']['port'])
+            server_url = '%s%s:%s'%(server_connection, config['server']['host'], config['server']['port'])
         except ValueError as e:
             print('Error reading config file, malformed JSON:')
             print('\t{}'.format(e))
@@ -352,9 +352,15 @@ def testRateLimiter():
 
         
 if __name__ == '__main__':
-    testLimit()
-    testEndpoint()
-    testPlatform()
-    testScenario()
-    # testRateLimiter()
+    print('1) Regression Testing')
+    print('2) Live Testing')
+    choice = input('Test Mode: ')
+    if choice == '1':
+        testLimit()
+        testEndpoint()
+        testPlatform()
+        testScenario()
+    elif choice == '2':
+        print('Please ensure that the Rate Limiter is running in another console')
+        testRateLimiter()
     

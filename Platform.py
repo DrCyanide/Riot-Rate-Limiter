@@ -1,12 +1,12 @@
 import time
-from multiprocessing import Lock
+#from multiprocessing import Lock
 from Limit import Limit
 from Endpoint import Endpoint
 
 class Platform():
     def __init__(self, slug=''):
         self.slug = slug
-        self.lock = Lock()
+        #self.lock = Lock()
 
         self.static_endpoints = {}
         self.static_count = 0
@@ -21,6 +21,7 @@ class Platform():
         
     @property
     def count(self):
+        print('Count for slug %s = %s, %s'%(self.slug, self.static_count + self.limited_count, self.limited_endpoints))
         return self.static_count + self.limited_count
         
     def hasURL(self):
@@ -31,19 +32,38 @@ class Platform():
         
     def addURL(self, url):
         endpoint_str = Endpoint.identifyEndpoint(url)
-        self.lock.acquire()
+        #self.lock.acquire()
         if 'static' in endpoint_str:
             if not endpoint_str in self.static_endpoints:
                 self.static_endpoints[endpoint_str] = Endpoint()
-            self.static_endpoints[endpoint_str].add(url)
+            self.static_endpoints[endpoint_str].addURL(url)
             self.static_count += 1
         else:
             if not endpoint_str in self.limited_endpoints:
                 self.limited_endpoints[endpoint_str] = Endpoint()
                 self.ordered_limited_endpoints.append(endpoint_str)
-            self.limited_endpoints[endpoint_str].add(url)
+            self.limited_endpoints[endpoint_str].addURL(url)
             self.limited_count += 1
-        self.lock.release()
+        #self.lock.release()
+        
+        
+    def addData(self, data):
+        # data is a dict with url inside, but other info too
+        endpoint_str = Endpoint.identifyEndpoint(data['url'])
+        #self.lock.acquire()
+        if 'static' in endpoint_str:
+            if not endpoint_str in self.static_endpoints:
+                self.static_endpoints[endpoint_str] = Endpoint()
+            self.static_endpoints[endpoint_str].addData(data)
+            self.static_count += 1
+        else:
+            if not endpoint_str in self.limited_endpoints:
+                self.limited_endpoints[endpoint_str] = Endpoint()
+                self.ordered_limited_endpoints.append(endpoint_str)
+            self.limited_endpoints[endpoint_str].addData(data)
+            self.limited_count += 1
+        #self.lock.release()
+        print('Added data count: %s'%self.limited_count)
         
         
     def rateLimitOK(self):
@@ -57,7 +77,7 @@ class Platform():
         
     def setLimit(self, headers):
         # Set self.limits
-        self.lock.acquire()
+        #self.lock.acquire()
         limits = headers['X-App-Rate-Limit'].split(',')
         for limit in limits:
             requests, seconds = limit.split(':')
@@ -65,16 +85,16 @@ class Platform():
                 self.platform_limits[seconds].setLimit(seconds, requests)
             else:
                 self.platform_limits[seconds] = Limit(seconds, requests)
-        self.lock.release()
+        #self.lock.release()
        
     def setCount(self, headers):
-        self.lock.acquire()
+        #self.lock.acquire()
         limits = headers['X-App-Rate-Limit-Count'].split(',')
         for limit in limits:
             used, seconds = limit.split(':')
             if seconds in self.platform_limits:
                 self.platform_limits[seconds].setUsed(used)
-        self.lock.release()
+        #self.lock.release()
     
     def setLimitAndCount(self, headers):
         self.setLimit(headers)
@@ -82,7 +102,7 @@ class Platform():
                 
                 
     def setEndpointLimit(self, url, headers):
-        self.lock.acquire()
+        #self.lock.acquire()
         endpoint_str = Endpoint.identifyEndpoint(url)
         if 'static' in endpoint_str:
             if not self.static_endpoints[endpoint_str].limitsDefined:
@@ -90,16 +110,16 @@ class Platform():
         else:
             if not self.limited_endpoints[endpoint_str].limitsDefined:
                 self.limited_endpoints[endpoint_str].setLimit(headers)
-        self.lock.release()
+        #self.lock.release()
     
     def setEndpointCount(self, url, headers):
-        self.lock.acquire()
+        #self.lock.acquire()
         endpoint_str = Endpoint.identifyEndpoint(url)
         if 'static' in endpoint_str:
             self.static_endpoints[endpoint_str].setCount(headers)
         else:
             self.limited_endpoints[endpoint_str].setCount(headers)
-        self.lock.release()
+        #self.lock.release()
         
     def setEndpointLimitAndCount(self, url, headers):
         self.setEndpointLimit(url, headers)
@@ -179,13 +199,13 @@ class Platform():
         search_order = self.ordered_limited_endpoints[i:] + self.ordered_limited_endpoints[:i]
         return search_order
         
-    def getURL(self):
-        # Return a URL that's limit OK to be run, and whether or not it needs a limit/count return
-        url = None
+    def get(self):
+        # Return data/URL that's limit OK to be run, and whether or not it needs a limit/count return
+        obj = None
         endpoint_limit_needed = False
         platform_limit_needed = False
         
-        self.lock.acquire()
+        #self.lock.acquire()
         try:
             if len(self.platform_limits.keys()) == 0:
                 platform_limit_needed = True
@@ -195,7 +215,7 @@ class Platform():
                 for endpoint_str in self.static_endpoints:
                     endpoint = self.static_endpoints[endpoint_str]
                     if endpoint.available() and endpoint.count > 0:
-                        url = endpoint.get()
+                        obj = endpoint.get()
                         endpoint_limit_needed = not endpoint.limitsDefined
                         self.static_count -= 1
                         break
@@ -205,7 +225,7 @@ class Platform():
                 for endpoint_str in search_order:
                     endpoint = self.limited_endpoints[endpoint_str]
                     if endpoint.available() and endpoint.count > 0:
-                        url = endpoint.get()
+                        obj = endpoint.get()
                         endpoint_limit_needed = not endpoint.limitsDefined
                         self.last_limited_endpoint = endpoint.name
                         self.limited_count -= 1
@@ -214,9 +234,9 @@ class Platform():
                 for limit in self.platform_limits:
                     self.platform_limits[limit].use()
         except Exception as e:
-            print('Platform %s: Exception getting URL\n%s'%(self.slug, e))
-        self.lock.release()
-        return url, platform_limit_needed, endpoint_limit_needed
+            print('Platform %s: Exception getting obj\n%s'%(self.slug, e))
+        #self.lock.release()
+        return obj, platform_limit_needed, endpoint_limit_needed
         
         
         

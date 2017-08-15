@@ -1,6 +1,7 @@
 import http.server
 import json
 import multiprocessing
+from multiprocessing import Lock
 from multiprocessing import Process
 from multiprocessing.queues import Empty
 from multiprocessing.managers import SyncManager
@@ -8,65 +9,78 @@ import time
 from collections import deque
 import urllib.request as requests
 
+from Platform import Platform
+
 config_path = "config.json"
 config = None
 
-# Syncmanager variables
-platform_queues = {}
+platform_lock = Lock()
+#platforms = {}
+platforms = None
+
+ticker_condition = None
 
 synced = {'condition': None, 'list': None}
 requested = {'condition': None, 'list': None}
 
 class MyHTTPHandler(http.server.BaseHTTPRequestHandler): 
     def do_GET(self):
-        self.handle_request()
+        self.handleRequest()
 
     def do_PUT(self):
-        self.handle_request()
+        self.handleRequest()
         
     def do_POST(self):
-        self.handle_request()
+        self.handleRequest()
         
-    def handle_request(self):
+    def handleRequest(self):
         global synced        
         
-        security_pass = self.check_security()
+        security_pass = self.checkSecurity()
         if not security_pass:
             return
         
         data = {}
         data['url'] = self.headers.get('url')
         data['return_url'] = self.headers.get('return_url')
-        data['region'], data['endpoint'] = identify_region_endpoint(data['url'])
+        platform_slug = identifyPlatform(data['url'])
+        if platform_slug in platforms:
+            platform_lock.acquire()
+            addData(platform_slug, data)
+            platform_lock.release()
+        else:
+            platform_lock.acquire()
+            platforms[platform_slug] = Platform(slug=platform_slug)
+            addData(platform_slug, data)
+            platform_lock.release()
+        print('%s count: %s'%(platform_slug, platforms[platform_slug].count))
         
-        # acquire requested condition, then add to the api
+        # Notify ticker
+        ticker_condition.acquire()
+        ticker_condition.notify()
+        ticker_condition.release()
         
-        #sort_lock.acquire()
-        #sort_queue.put(data)
-        #sort_lock.notify()
-        #sort_lock.release()
-        
-        if self.command.upper() == 'GET' and False: 
-            # GET = Synchronous, PUT/POST = Asynchronous
-            keep_waiting = True
-            while keep_waiting:
-                synced['condition'].acquire()
-                synced['condition'].wait()
-                synced['condition'].release()
-            
-                for reply in synced['list']:
-                    if reply['url'] == data['url']:
-                        keep_waiting = False
-                        # TODO: Return this reply, then remove it from the list later
-                        #       Emphasis on 'later', since it's possible for multiple 
-                        #       requests to have the same url
-                        #       Add to a cleanup queue?
-
+        #if self.command.upper() == 'GET' and False: 
+        #    # GET = Synchronous, PUT/POST = Asynchronous
+        #    keep_waiting = True
+        #    while keep_waiting:
+        #        synced['condition'].acquire()
+        #        synced['condition'].wait()
+        #        synced['condition'].release()
+        #    
+        #        for reply in synced['list']:
+        #            if reply['url'] == data['url']:
+        #                keep_waiting = False
+        #                # TODO: Return this reply, then remove it from the list later
+        #                #       Emphasis on 'later', since it's possible for multiple 
+        #                #       requests to have the same url
+        #                #       Add to a cleanup queue?
+        #
         self.send_response(200)
         self.end_headers()
     
     
-    def check_security(self):
+    def checkSecurity(self):
         intruder = False
         IP = self.address_string()
         if len(config['security']['whitelist']) > 0:
@@ -82,64 +96,78 @@ class MyHTTPHandler(http.server.BaseHTTPRequestHandler):
         return not intruder
         
         
-def identify_region_endpoint(url):
-    url = url[:url.find('?')].lower() # Remove the query string
-    split_url = url.split()
+def addData(platform_slug, data):
+    # syncmanager dicts require the update() command to be run
+    # before anything will be saved. The normal 'addData()' method
+    # won't result in the object being pickled again, thus it will
+    # look like there was no update.
+    global platforms
+    print('Adding data to %s'%platform_slug)
+    print('Add before: %s'%platforms)
+    
+    p = platforms[platform_slug]
+    p.addData(data)
+    platforms.update([(platform_slug,p)])
+    print('Add after: %s'%platforms)
+    
+def getData(platform_slug, platforms):
+    # See addData comment
+    #global platforms
+    print('Getting data from %s'%platform_slug)
+    print('Get before: %s'%platforms)
+    
+    p = platforms[platform_slug]
+    data = p.get()
+    platforms.update([(platform_slug,p)])
+        
+def identifyPlatform(url):
+    split_url = url.lower().split('/')
     try:
-        region = (split_url[2].split('.')[0])
+        platform = (split_url[2].split('.')[0])
     except:
-        region = 'unknown'
-    endpoint = ''
-    try:
-        if not 'by-name' in split_url:
-            for segment in split_url[2:]:
-                if not segment.isnumeric():
-                    endpoint += segment + '/'
-        else:
-            endpoint = '/'.join(split_url[2:-1]) # Ignore the player name itself
-    except:
-        endpoint = 'no endpoint'
-    return (region, endpoint)
-
-
-# Read the rate limit and method limit from a response
-def set_rate_limits(platform_id, endpoint, headers):
-    global platform_queues
+        platform = 'unknown'
+    return platform
     
-    split_limits = []
-    split_limits_usage = [] 
-    split_methods = []
-    split_methods_usage = []
-    
-    split_lists = [split_limits, split_limits_usage, split_method, split_method_usage]
-    split_headers = ['X-App-Rate-Limit', 'X-App-Rate-Limit-Count', 'X-Method-Rate-Limit', 'X-Method-Rate-Limit-Count']
-    
-    for i in range(len(split_lists)):
-        if split_headers[i] in headers:
-            split_lists[i] = headers[split_headers[i]].split(',')
+          
 
-    for platform in platform_queues.keys():
-        # Add Rate Limit if it doesn't exist for a given platform
-        if len(platform_queues[platform]['rate_limits']) == 0:
-            for i in range(len(split_limits)):
-                limit, seconds = split_limits[i].split(':')
-                used = 0
-                if platform == platform_id:
-                    used = split_limits_usage[i].split(':')[0]
-                rate_limit = {'limit': limit, 'seconds': seconds, 'used': used}
-                platform_queues[platform]['rate_limits'].append(rate_limit)
+def Ticker(running, platforms, ticker_condition):
+    print('Ticker Started')
+    while running.is_set():
+        next_run = None
+        print('Platforms: %s'%platforms)
+        for platform_slug in platforms.keys():
+            if platforms[platform_slug].available():
+                print('%s available'%platform_slug)
+            else:
+                print('%s not available'%platform_slug)
+            next = platforms[platform_slug].timeNextAvailable()
+            if next_run == None or next < next_run:
+                next_run = next
+                # TODO: Skip the rest if next_run is now, handle that
                 
-        # Add Endpoint/Method Limit if it doesn't exist for a given platform
-        if not endpoint in platform_queues[platform]['endpoint_limits']['limits']:
-            for i in range(len(split_methods)):
-                limit, seconds = split_methods[i].split(':')
-                used = 0
-                if platform == platform_id:
-                    used = split_methods_usage[i].split(':')[0]
-                method_limit = {'limit': limit, 'seconds': seconds, 'used': used}
-                platform_queues[platform]['endpoint_limits']['limits'][endpoint].append(method_limit)
-                    
-def read_config():
+        if next_run == None:
+            print("Ticker didn't find anything, sleeping")
+            ticker_condition.acquire()
+            ticker_condition.wait()
+            ticker_condition.release()
+            continue
+        else:
+            print('Ticker found something')
+        
+        now = time.time()
+        if next_run > now:
+            time.sleep(next_run - now)
+        
+        for platform_slug in platforms.keys():
+            if platforms[platform_slug].available():
+                print('Platforms from Ticker: %s'%platforms)
+                #data = getData(platform_slug)
+                data = getData(platform_slug, platforms)
+                print('Got Data: %s'%data)
+                
+    print('Ticker shutting down')
+
+def readConfig():
     global config
     try:
         with open(config_path) as f:
@@ -156,38 +184,52 @@ def read_config():
         exit(0)
     
     
-def init_processes():
-    global synced, platform_queues
-    manager = SyncManager()
-    manager.start()
     
-    for platform in config['riot_games']['platforms']:
-        platform_queues[platform] = {
-            'static_queue': manager.Queue(),
-            'static_condition': manager.Condition(),
-            'static_last_call': time.time(),
-            
-            'limited_queue': manager.Queue(),
-            'limited_condition': manager.Condition(),
-            'limited_last_call': time.time(),
-            
-            'rate_limits':[],
-                # {'limit': x, 'seconds': y, 'used': z}
-            'endpoint_limits':{'last_call': time.time(), 'limits':[]} # AKA: method limits
-                # limits = [{'limit': x, 'seconds': y, 'used': z}]
-        }
     
-    synced['condition'] = manager.Condition()
-    synced['list'] = manager.list()
+#def init_processes():
+#    global synced, platform_queues
+#    manager = SyncManager()
+#    manager.start()
+#    
+#    for platform in config['riot_games']['platforms']:
+#        platform_queues[platform] = {
+#            'static_queue': manager.Queue(),
+#            'static_condition': manager.Condition(),
+#            'static_last_call': time.time(),
+#            
+#            'limited_queue': manager.Queue(),
+#            'limited_condition': manager.Condition(),
+#            'limited_last_call': time.time(),
+#            
+#            'rate_limits':[],
+#                # {'limit': x, 'seconds': y, 'used': z}
+#            'endpoint_limits':{'last_call': time.time(), 'limits':[]} # AKA: method limits
+#                # limits = [{'limit': x, 'seconds': y, 'used': z}]
+#        }
+#    
+#    synced['condition'] = manager.Condition()
+#    synced['list'] = manager.list()
     
     
 
     
 def main():
     #global server
-    read_config()
-    init_processes()
+    global ticker_condition, platforms
+    readConfig()
+    #init_processes()
     #init_limits()
+    
+    manager = SyncManager()
+    manager.start()
+    running = manager.Event()
+    running.set()
+    platforms = manager.dict()
+    ticker_condition = manager.Condition()
+    
+    ticking = Process(target=Ticker, args=(running, platforms, ticker_condition))
+    ticking.deamon = True
+    ticking.start()
     
     #start_all()
     server = http.server.HTTPServer((config['server']['host'], config['server']['port']), MyHTTPHandler)
