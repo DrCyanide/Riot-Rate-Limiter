@@ -13,6 +13,7 @@ from Platform import Platform
 
 config_path = "config.json"
 config = None
+api_key = ''
 
 platform_lock = Lock()
 #platforms = {}
@@ -102,23 +103,19 @@ def addData(platform_slug, data):
     # won't result in the object being pickled again, thus it will
     # look like there was no update.
     global platforms
-    print('Adding data to %s'%platform_slug)
-    print('Add before: %s'%platforms)
-    
     p = platforms[platform_slug]
     p.addData(data)
     platforms.update([(platform_slug,p)])
-    print('Add after: %s'%platforms)
     
 def getData(platform_slug, platforms):
     # See addData comment
     #global platforms
-    print('Getting data from %s'%platform_slug)
-    print('Get before: %s'%platforms)
-    
     p = platforms[platform_slug]
     data = p.get()
     platforms.update([(platform_slug,p)])
+    print('Get data data:')
+    print(data)
+    return data
         
 def identifyPlatform(url):
     split_url = url.lower().split('/')
@@ -130,50 +127,85 @@ def identifyPlatform(url):
     
           
 
-def Ticker(running, platforms, ticker_condition):
-    print('Ticker Started')
+def ticker(running, platforms, ticker_condition, retriever_queue, retriever_condition):
+    print('Ticker started')
     while running.is_set():
         next_run = None
         print('Platforms: %s'%platforms)
         for platform_slug in platforms.keys():
             if platforms[platform_slug].available():
-                print('%s available'%platform_slug)
+                next_run = platforms[platform_slug].timeNextAvailable()
+                break # at least one platform ready
             else:
-                print('%s not available'%platform_slug)
-            next = platforms[platform_slug].timeNextAvailable()
-            if next_run == None or next < next_run:
-                next_run = next
-                # TODO: Skip the rest if next_run is now, handle that
+                next = platforms[platform_slug].timeNextAvailable()
+                if next_run == None or next < next_run:
+                    next_run = next
+            
                 
         if next_run == None:
-            print("Ticker didn't find anything, sleeping")
+            #print("Ticker didn't find anything, sleeping")
             ticker_condition.acquire()
             ticker_condition.wait()
             ticker_condition.release()
             continue
-        else:
-            print('Ticker found something')
+        #else:
+        #    print('Ticker found something')
         
+        # sleep until rate/method limits are OK
         now = time.time()
         if next_run > now:
             time.sleep(next_run - now)
         
         for platform_slug in platforms.keys():
             if platforms[platform_slug].available():
-                print('Platforms from Ticker: %s'%platforms)
-                #data = getData(platform_slug)
+                #print('Platforms from Ticker: %s'%platforms)
                 data = getData(platform_slug, platforms)
-                print('Got Data: %s'%data)
+                #print('Got Data:')
+                #print(data)
                 
-    print('Ticker shutting down')
+                # TODO: 
+                # Check the retriever queue or the idle retrievers to make sure
+                # that things don't get overloaded. Log when unable to keep up
+                retriever_condition.acquire()
+                retriever_queue.add(data)
+                retriever_condition.notify()
+                retriever_condition.release()
+                
+    print('Ticker shut down')
 
+
+def retriever(running, retriever_queue, retriever_condition):
+    print('Retriever started')
+    while running.is_set():
+        retriever_condition.acquire()
+        if retriever_queue.qsize() == 0:
+            retriever_condition.wait()
+            retriever_condition.release()
+        else:
+            data = retriver_queue.pop()
+            retriever_condition.release()
+        
+        # TODO:
+        # Create the request, adding the rate limit key to the headers
+        # Some sort of way for me to test without using up rate limit?
+        r = urllib.request.Request(data['url'], headers={'api_key': api_key})
+        try:
+            response = urllib.request.urlopen(r)
+            # TODO: handle the 200
+        except Exception as e:
+            print('Error! %s'%e)
+            # TODO: handle the error (500, 403, 404, 429)
+        
+    print('Retriever shut down')
+    
 def readConfig():
-    global config
+    global config, api_key
     try:
         with open(config_path) as f:
             data = f.read()
             try:
                 config = json.loads(data)
+                api_key = config['riot_games']['api_key']
             except ValueError as e:
                 print('Error reading config file, malformed JSON:')
                 print('\t{}'.format(e))
@@ -185,40 +217,12 @@ def readConfig():
     
     
     
-    
-#def init_processes():
-#    global synced, platform_queues
-#    manager = SyncManager()
-#    manager.start()
-#    
-#    for platform in config['riot_games']['platforms']:
-#        platform_queues[platform] = {
-#            'static_queue': manager.Queue(),
-#            'static_condition': manager.Condition(),
-#            'static_last_call': time.time(),
-#            
-#            'limited_queue': manager.Queue(),
-#            'limited_condition': manager.Condition(),
-#            'limited_last_call': time.time(),
-#            
-#            'rate_limits':[],
-#                # {'limit': x, 'seconds': y, 'used': z}
-#            'endpoint_limits':{'last_call': time.time(), 'limits':[]} # AKA: method limits
-#                # limits = [{'limit': x, 'seconds': y, 'used': z}]
-#        }
-#    
-#    synced['condition'] = manager.Condition()
-#    synced['list'] = manager.list()
-    
-    
 
     
 def main():
     #global server
     global ticker_condition, platforms
     readConfig()
-    #init_processes()
-    #init_limits()
     
     manager = SyncManager()
     manager.start()
@@ -226,8 +230,14 @@ def main():
     running.set()
     platforms = manager.dict()
     ticker_condition = manager.Condition()
+    retriever_queue = manager.Queue()
+    retriever_condition = manager.Condition()
     
-    ticking = Process(target=Ticker, args=(running, platforms, ticker_condition))
+    #TODO:
+    # start responder
+    # start retriever
+    ticking = Process(target=ticker, args=(
+            running, platforms, ticker_condition, retriever_queue, retriever_condition))
     ticking.deamon = True
     ticking.start()
     
