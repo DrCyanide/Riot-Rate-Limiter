@@ -21,8 +21,6 @@ platforms = None
 
 ticker_condition = None
 
-synced = {'condition': None, 'list': None}
-requested = {'condition': None, 'list': None}
 
 class MyHTTPHandler(http.server.BaseHTTPRequestHandler): 
     def do_GET(self):
@@ -35,15 +33,15 @@ class MyHTTPHandler(http.server.BaseHTTPRequestHandler):
         self.handleRequest()
         
     def handleRequest(self):
-        global synced        
-        
         security_pass = self.checkSecurity()
         if not security_pass:
             return
         
         data = {}
         data['url'] = self.headers.get('url')
+        data['method'] = self.command.upper()
         data['return_url'] = self.headers.get('return_url')
+        # TODO: If method == PUT/POST, it needs return_url.
         platform_slug = identifyPlatform(data['url'])
         if platform_slug in platforms:
             platform_lock.acquire()
@@ -54,14 +52,14 @@ class MyHTTPHandler(http.server.BaseHTTPRequestHandler):
             platforms[platform_slug] = Platform(slug=platform_slug)
             addData(platform_slug, data)
             platform_lock.release()
-        print('%s count: %s'%(platform_slug, platforms[platform_slug].count))
+        #print('%s count: %s'%(platform_slug, platforms[platform_slug].count))
         
         # Notify ticker
         ticker_condition.acquire()
         ticker_condition.notify()
         ticker_condition.release()
         
-        #if self.command.upper() == 'GET' and False: 
+        #if data['method'] == 'GET': 
         #    # GET = Synchronous, PUT/POST = Asynchronous
         #    keep_waiting = True
         #    while keep_waiting:
@@ -107,16 +105,16 @@ def addData(platform_slug, data):
     p.addData(data)
     platforms.update([(platform_slug,p)])
     
+    
 def getData(platform_slug, platforms):
     # See addData comment
     #global platforms
     p = platforms[platform_slug]
     data = p.get()
     platforms.update([(platform_slug,p)])
-    print('Get data data:')
-    print(data)
     return data
-        
+    
+    
 def identifyPlatform(url):
     split_url = url.lower().split('/')
     try:
@@ -125,13 +123,11 @@ def identifyPlatform(url):
         platform = 'unknown'
     return platform
     
-          
 
-def ticker(running, platforms, ticker_condition, retriever_queue, retriever_condition):
+def ticker(running, platforms, ticker_condition, r_queue, r_condition):
     print('Ticker started')
     while running.is_set():
         next_run = None
-        print('Platforms: %s'%platforms)
         for platform_slug in platforms.keys():
             if platforms[platform_slug].available():
                 next_run = platforms[platform_slug].timeNextAvailable()
@@ -159,39 +155,43 @@ def ticker(running, platforms, ticker_condition, retriever_queue, retriever_cond
         for platform_slug in platforms.keys():
             if platforms[platform_slug].available():
                 #print('Platforms from Ticker: %s'%platforms)
-                data = getData(platform_slug, platforms)
+                data, platform = getData(platform_slug, platforms)
                 #print('Got Data:')
                 #print(data)
                 
                 # TODO: 
                 # Check the retriever queue or the idle retrievers to make sure
                 # that things don't get overloaded. Log when unable to keep up
-                retriever_condition.acquire()
-                retriever_queue.add(data)
-                retriever_condition.notify()
-                retriever_condition.release()
+                r_condition.acquire()
+                r_queue.put(data)
+                print('r_queue size: %s'%r_queue.qsize())
+                r_condition.notify()
+                r_condition.release()
                 
     print('Ticker shut down')
 
 
-def retriever(running, retriever_queue, retriever_condition):
+def retriever(running, platforms, r_queue, r_condition):
     print('Retriever started')
     while running.is_set():
-        retriever_condition.acquire()
-        if retriever_queue.qsize() == 0:
-            retriever_condition.wait()
-            retriever_condition.release()
+        data = {}
+        r_condition.acquire()
+        if r_queue.qsize() == 0:
+            r_condition.wait()
+            r_condition.release()
         else:
             data = retriver_queue.pop()
-            retriever_condition.release()
+            r_condition.release()
         
         # TODO:
         # Create the request, adding the rate limit key to the headers
         # Some sort of way for me to test without using up rate limit?
-        r = urllib.request.Request(data['url'], headers={'api_key': api_key})
         try:
-            response = urllib.request.urlopen(r)
+            print('Data pulled: %s'%data)
+            #r = urllib.request.Request(data['url'], headers={'api_key': api_key})
+            #response = urllib.request.urlopen(r)
             # TODO: handle the 200
+            
         except Exception as e:
             print('Error! %s'%e)
             # TODO: handle the error (500, 403, 404, 429)
@@ -226,23 +226,36 @@ def main():
     
     manager = SyncManager()
     manager.start()
+    
     running = manager.Event()
     running.set()
+    
     platforms = manager.dict()
     ticker_condition = manager.Condition()
-    retriever_queue = manager.Queue()
-    retriever_condition = manager.Condition()
+    
+    r_queue = manager.Queue()
+    r_condition = manager.Condition()
+    
+    response_queue = manager.Queue() # used for PUT/POST requests
+    sync_data = manager.dict() # used for the GET requests
     
     #TODO:
     # start responder
-    # start retriever
-    ticking = Process(target=ticker, args=(
-            running, platforms, ticker_condition, retriever_queue, retriever_condition))
-    ticking.deamon = True
+    
+    #TODO: convert to pool
+    r_pool = Pool(processes=config['threads']['api_threads'])
+    r_args = (running, platforms, r_queue, r_condition)
+    #retrieving = Process(target=retriever, args=r_args, deamon=True, name='Retriever')
+    #retrieving.start()
+    r_pool.apply_async(retriever, args=r_args)
+    
+    ticking_args = (running, platforms, ticker_condition, r_queue, r_condition)
+    ticking = Process(target=ticker, args=ticking_args, deamon=True, name='Ticker')
     ticking.start()
     
     #start_all()
-    server = http.server.HTTPServer((config['server']['host'], config['server']['port']), MyHTTPHandler)
+    server = http.server.HTTPServer(
+        (config['server']['host'], config['server']['port']), MyHTTPHandler)
     
     try:
         server.serve_forever()

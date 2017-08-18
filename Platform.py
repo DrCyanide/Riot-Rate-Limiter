@@ -63,7 +63,6 @@ class Platform():
             self.limited_endpoints[endpoint_str].addData(data)
             self.limited_count += 1
         #self.lock.release()
-        print('Added data count: %s'%self.limited_count)
         
         
     def rateLimitOK(self):
