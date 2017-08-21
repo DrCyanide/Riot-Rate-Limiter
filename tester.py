@@ -341,6 +341,12 @@ def testRateLimiter():
             print('\t{}'.format(e))
             exit(0)
 
+    output = input('Display output? (y/n, default=n): ')
+    if len(output) > 0 and 'y' in output.lower() :
+        output = True
+    else:
+        output = False
+
     while True:
         input('Press enter to issue request')
 
@@ -348,7 +354,9 @@ def testRateLimiter():
         r.add_header('url',target_url)
         #r.add_header('return_url', 'http://127.0.0.1')
         #r.add_header('api_name', 'test_1')
-        requests.urlopen(r)
+        response = requests.urlopen(r)
+        if output:
+            print(response.read().decode('utf-8'))
 
         
 if __name__ == '__main__':
