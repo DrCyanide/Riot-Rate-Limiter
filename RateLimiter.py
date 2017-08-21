@@ -84,11 +84,10 @@ class MyHTTPHandler(http.server.BaseHTTPRequestHandler):
         
                 if data['url'] in get_dict.keys():
                     keep_waiting = False
-                    outbound = get_dict[data['url']]
-                    #print(outbound)
+                    outbound_data = get_dict[data['url']]
                     self.send_response(200)
                     self.end_headers()
-                    self.wfile.write(outbound)                   
+                    self.wfile.write(outbound_data)                   
                     if logTimes:
                         t = time.time()
                         print('End: %s'%(t-startTime))
@@ -235,20 +234,40 @@ def retriever(running, platforms, r_queue, r_condition, get_dict, get_condition)
                 platforms.update([(platform_id, platform)])
             
             response_body = response.read()
-            #print(response_body)
             if data['method'] == 'GET':
                 get_condition.acquire()
                 get_dict.update([(data['url'], response_body)])
-                get_condition.notify_all() # we don't have a specific thread listening
+                get_condition.notify_all() # we don't have a specific response listening
                 get_condition.release()
-            #else:
-                # call outbound
+            else:
+                data['response'] = response_body
+                reply_condition.acquire()
+                reply_queue.add(data)
+                reply_condition.notify()
+                reply_condition.release()
             
         except Exception as e:
             print('Error! %s'%e)
             # TODO: handle the error (500, 403, 404, 429)
         
     print('Retriever shut down')
+    
+    
+def outbound(running, reply_queue, reply_condition):
+
+    while running:
+        reply_condition.acquire()
+        reply_condition.wait()
+        reply_condition.release()
+        
+        if reply_queue.qsize() == 0:
+            continue
+        data = reply_queue.get()
+        
+        request = urllib.request.Request(data['return_url'], data['response'])
+        request.addheader({'url':data['url']})
+        urllib.request.urlopen(request)
+    
     
 def readConfig():
     global config, api_key
@@ -297,14 +316,20 @@ def main():
     reply_queue = manager.Queue()
     reply_condition = manager.Condition()
     
-    #TODO:
-    # start responder
+    # A pool closes, don't want it to close.
+    reply_list = []
+    reply_args = (running, reply_queue, reply_condition)
+    for i in range(config['threads']['return_threads'])
+        r = Process(target=outbound, args=reply_args, name='Reply_%s'%i)
+        r.deamon = True
+        reply_list.append(r)
+        r.start()
     
     # A pool closes, don't want it to close.
     r_list = []
     r_args = (running, platforms, r_queue, r_condition, get_dict, get_condition)
-    for _ in range(config['threads']['api_threads']):
-        r = Process(target=retriever, args=r_args, name='Retriever')
+    for i in range(config['threads']['api_threads']):
+        r = Process(target=retriever, args=r_args, name='Retriever_%s'%i)
         r.deamon = True
         r_list.append(r)
         r.start()
@@ -314,7 +339,7 @@ def main():
     ticking.deamon = True
     ticking.start()
     
-    #start_all()
+    
     server = http.server.HTTPServer(
         (config['server']['host'], config['server']['port']), MyHTTPHandler)
     
