@@ -8,7 +8,7 @@ from multiprocessing.queues import Empty
 from multiprocessing.managers import SyncManager
 import time
 from collections import deque
-import urllib.request as requests
+import urllib.request
 
 from Platform import Platform
 
@@ -17,11 +17,14 @@ config = None
 api_key = ''
 
 platform_lock = Lock()
-#platforms = {}
 platforms = None
 
 ticker_condition = None
+get_dict = None
+get_condition = None
 
+logTimes = True
+startTime = None
 
 class MyHTTPHandler(http.server.BaseHTTPRequestHandler): 
     def do_GET(self):
@@ -34,9 +37,14 @@ class MyHTTPHandler(http.server.BaseHTTPRequestHandler):
         self.handleRequest()
         
     def handleRequest(self):
+        global startTime
         security_pass = self.checkSecurity()
         if not security_pass:
             return
+        
+        if logTimes:
+            startTime = time.time()
+            print('Start: %s'%startTime)
         
         data = {}
         data['url'] = self.headers.get('url')
@@ -66,22 +74,28 @@ class MyHTTPHandler(http.server.BaseHTTPRequestHandler):
         ticker_condition.notify()
         ticker_condition.release()
         
-        #if data['method'] == 'GET': 
-        #    # GET = Synchronous, PUT/POST = Asynchronous
-        #    keep_waiting = True
-        #    while keep_waiting:
-        #        synced['condition'].acquire()
-        #        synced['condition'].wait()
-        #        synced['condition'].release()
-        #    
-        #        for reply in synced['list']:
-        #            if reply['url'] == data['url']:
-        #                keep_waiting = False
-        #                # TODO: Return this reply, then remove it from the list later
-        #                #       Emphasis on 'later', since it's possible for multiple 
-        #                #       requests to have the same url
-        #                #       Add to a cleanup queue?
-        #
+        if data['method'] == 'GET': 
+            # GET = Synchronous, PUT/POST = Asynchronous
+            keep_waiting = True
+            while keep_waiting:
+                get_condition.acquire()
+                get_condition.wait()
+                get_condition.release()
+        
+                if data['url'] in get_dict.keys():
+                    keep_waiting = False
+                    outbound = get_dict[data['url']]
+                    #print(outbound)
+                    self.send_response(200)
+                    self.end_headers()
+                    self.wfile.write(outbound)                   
+                    if logTimes:
+                        t = time.time()
+                        print('End: %s'%(t-startTime))
+ 
+                    # TODO: Cleanup retrieved data so it doesn't keep taking up memory
+                    return
+                    
         self.send_response(200)
         self.end_headers()
     
@@ -154,6 +168,10 @@ def ticker(running, platforms, ticker_condition, r_queue, r_condition):
         #else:
         #    print('Ticker found something')
         
+        #if logTimes:
+        #    t = time.time()
+        #    print('Ticker: %s'%(t-startTime))
+        
         # sleep until rate/method limits are OK
         now = time.time()
         if next_run > now:
@@ -162,7 +180,7 @@ def ticker(running, platforms, ticker_condition, r_queue, r_condition):
         for platform_slug in platforms.keys():
             if platforms[platform_slug].available():
                 #print('Platforms from Ticker: %s'%platforms)
-                data, platform_needs_limit, method_needs_limit = getData(platform_slug, platforms)
+                data = getData(platform_slug, platforms)
                 #print('Got Data:')
                 #print(data)
                 
@@ -171,14 +189,14 @@ def ticker(running, platforms, ticker_condition, r_queue, r_condition):
                 # that things don't get overloaded. Log when unable to keep up
                 r_condition.acquire()
                 r_queue.put(data)
-                print('r_queue size: %s'%r_queue.qsize())
+                #print('r_queue size: %s'%r_queue.qsize())
                 r_condition.notify()
                 r_condition.release()
                 
     print('Ticker shut down')
 
 
-def retriever(running, platforms, r_queue, r_condition):
+def retriever(running, platforms, r_queue, r_condition, get_dict, get_condition):
     print('Retriever started')
     while running.is_set():
         data = {}
@@ -188,16 +206,43 @@ def retriever(running, platforms, r_queue, r_condition):
             r_condition.release()
             continue
         else:
-            data = r_queue.get()
+            data, platform_needs_limit, method_needs_limit = r_queue.get()
             r_condition.release()
+            #if logTimes:
+            #    t = time.time()
+            #    print('Retriever start: %s'%(t-startTime))
         
         # TODO:
         # Some way to test without using up rate limit? Dummy mode?
         try:
-            print('Retriever - Data pulled: %s'%data)
-            #r = urllib.request.Request(data['url'], headers={'api_key': api_key})
-            #response = urllib.request.urlopen(r)
-            # TODO: handle the 200
+            #print('Retriever - Data pulled: %s'%data)
+            r = urllib.request.Request(data['url'], headers={'X-Riot-Token': api_key})
+            response = urllib.request.urlopen(r)
+            
+            #if logTimes:
+            #    t = time.time()
+            #    print('Retriever end: %s'%(t-startTime))
+                
+            # handle 200 response
+            if platform_needs_limit or method_needs_limit:
+                headers = dict(zip(response.headers.keys(), response.headers.values()))
+                platform_id = identifyPlatform(data['url'])
+                platform = platforms[platform_id]
+                if platform_needs_limit:
+                    platform.setLimit(headers)
+                if method_needs_limit:
+                    platform.setEndpointLimit(data['url'], headers)
+                platforms.update([(platform_id, platform)])
+            
+            response_body = response.read()
+            #print(response_body)
+            if data['method'] == 'GET':
+                get_condition.acquire()
+                get_dict.update([(data['url'], response_body)])
+                get_condition.notify_all() # we don't have a specific thread listening
+                get_condition.release()
+            #else:
+                # call outbound
             
         except Exception as e:
             print('Error! %s'%e)
@@ -229,6 +274,7 @@ def readConfig():
 def main():
     #global server
     global ticker_condition, platforms
+    global get_dict, get_condition
     readConfig()
     
     manager = SyncManager()
@@ -243,15 +289,20 @@ def main():
     r_queue = manager.Queue()
     r_condition = manager.Condition()
     
-    response_queue = manager.Queue() # used for PUT/POST requests
-    sync_data = manager.dict() # used for the GET requests
+    # used for HTTP GET requests and their responses
+    get_dict = manager.dict()
+    get_condition = manager.Condition()
+    
+    # used for HTTP PUT and POST to issue their responses
+    reply_queue = manager.Queue()
+    reply_condition = manager.Condition()
     
     #TODO:
     # start responder
     
     # A pool closes, don't want it to close.
     r_list = []
-    r_args = (running, platforms, r_queue, r_condition)
+    r_args = (running, platforms, r_queue, r_condition, get_dict, get_condition)
     for _ in range(config['threads']['api_threads']):
         r = Process(target=retriever, args=r_args, name='Retriever')
         r.deamon = True
