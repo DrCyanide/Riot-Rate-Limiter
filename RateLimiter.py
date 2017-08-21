@@ -41,7 +41,13 @@ class MyHTTPHandler(http.server.BaseHTTPRequestHandler):
         data['url'] = self.headers.get('url')
         data['method'] = self.command.upper()
         data['return_url'] = self.headers.get('return_url')
-        # TODO: If method == PUT/POST, it needs return_url.
+        
+        # The Riot API has no commands where you just send data, so no return_url = error
+        if  data['method'] in ['PUT','POST'] and (data['return_url'] == None):
+            self.send_response(404)
+            self.end_headers()
+            return
+            
         platform_slug = identifyPlatform(data['url'])
         if platform_slug in platforms:
             platform_lock.acquire()
