@@ -2,6 +2,7 @@ import http.server
 import json
 import multiprocessing
 from multiprocessing import Lock
+from multiprocessing import Pool
 from multiprocessing import Process
 from multiprocessing.queues import Empty
 from multiprocessing.managers import SyncManager
@@ -161,7 +162,7 @@ def ticker(running, platforms, ticker_condition, r_queue, r_condition):
         for platform_slug in platforms.keys():
             if platforms[platform_slug].available():
                 #print('Platforms from Ticker: %s'%platforms)
-                data, platform = getData(platform_slug, platforms)
+                data, platform_needs_limit, method_needs_limit = getData(platform_slug, platforms)
                 #print('Got Data:')
                 #print(data)
                 
@@ -185,15 +186,15 @@ def retriever(running, platforms, r_queue, r_condition):
         if r_queue.qsize() == 0:
             r_condition.wait()
             r_condition.release()
+            continue
         else:
-            data = retriver_queue.pop()
+            data = r_queue.get()
             r_condition.release()
         
         # TODO:
-        # Create the request, adding the rate limit key to the headers
-        # Some sort of way for me to test without using up rate limit?
+        # Some way to test without using up rate limit? Dummy mode?
         try:
-            print('Data pulled: %s'%data)
+            print('Retriever - Data pulled: %s'%data)
             #r = urllib.request.Request(data['url'], headers={'api_key': api_key})
             #response = urllib.request.urlopen(r)
             # TODO: handle the 200
@@ -248,15 +249,18 @@ def main():
     #TODO:
     # start responder
     
-    #TODO: convert to pool
-    r_pool = Pool(processes=config['threads']['api_threads'])
+    # A pool closes, don't want it to close.
+    r_list = []
     r_args = (running, platforms, r_queue, r_condition)
-    #retrieving = Process(target=retriever, args=r_args, deamon=True, name='Retriever')
-    #retrieving.start()
-    r_pool.apply_async(retriever, args=r_args)
-    
+    for _ in range(config['threads']['api_threads']):
+        r = Process(target=retriever, args=r_args, name='Retriever')
+        r.deamon = True
+        r_list.append(r)
+        r.start()
+        
     ticking_args = (running, platforms, ticker_condition, r_queue, r_condition)
-    ticking = Process(target=ticker, args=ticking_args, deamon=True, name='Ticker')
+    ticking = Process(target=ticker, args=ticking_args, name='Ticker')
+    ticking.deamon = True
     ticking.start()
     
     #start_all()

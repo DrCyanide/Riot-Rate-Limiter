@@ -21,7 +21,7 @@ class Platform():
         
     @property
     def count(self):
-        print('Count for slug %s = %s, %s'%(self.slug, self.static_count + self.limited_count, self.limited_endpoints))
+        #print('Count for slug %s = %s, %s'%(self.slug, self.static_count + self.limited_count, self.limited_endpoints))
         return self.static_count + self.limited_count
         
     def hasURL(self):
