@@ -12,7 +12,7 @@ import urllib.request
 
 from Platform import Platform
 
-config_path = "config.json"
+config_path = 'config.json'
 config = None
 api_key = ''
 
@@ -262,12 +262,15 @@ def outbound(running, reply_queue, reply_condition):
         
         if reply_queue.qsize() == 0:
             continue
-        data = reply_queue.get()
-        
-        request = urllib.request.Request(data['return_url'], data['response'])
-        request.addheader({'url':data['url']})
-        urllib.request.urlopen(request)
-    
+        try:
+            data = reply_queue.get()
+            
+            request = urllib.request.Request(data['return_url'], data['response'], method='POST')
+            request.addheader({'url':data['url']})
+            request.addheader({'':''})
+            urllib.request.urlopen(request)
+        except Exception as e:
+            print('Outbound error: %s'%e)
     
 def readConfig():
     global config, api_key
