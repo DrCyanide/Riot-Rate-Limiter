@@ -9,19 +9,40 @@ rate_limits = []
 class MyHTTPHandler(http.server.BaseHTTPRequestHandler): 
     def do_GET(self):
         # Imitate the Riot API, returning data with headers
-        if available(self.path):
+        available, source, seconds = getAvailable(self.path)
+        if available:
             self.generate_response(200)
         else:
-            self.generate_response(429)
+            self.generate_response(429, source, seconds)
+        
     
     def do_POST(self):
         # Collect responses from RateLimiter
         pass
         
-    def generate_response(self, code):
-        headers = dict(zip(getRateLimit(self.path), getMethodLimit(self.path)))
-        self.generate_body(code) 
+    def do_PUT(self):
+        # Modify server mode to Normal (tries to imitate normal conditions) or Error (throw random errors)
+        pass
         
+    def generate_response(self, code, source=None, seconds=None):
+        headers = getRateLimit(self.path)
+        headers.update(getMethodLimit(self.path))
+        #headers = dict(zip(getRateLimit(self.path), getMethodLimit(self.path)))
+        if code == 429:
+            headers['X-Rate-Limit-Type'] = source
+            if seconds != None:
+                headers['Retry-After'] = seconds
+        body = self.generate_body(code) 
+        
+        self.send_response(200)
+        for header in headers.keys():
+            self.send_header(header, headers[header])
+        self.end_headers()
+        self.wfile.write(json.dumps(body).encode('utf-8'))
+        
+    def generate_body(self, code):
+        body = {}
+        return body
     
     
 class Limit():
@@ -34,11 +55,18 @@ class Limit():
     def available(self):
         if self.start == None:
             return True
-        if self.used < limit:
+        if self.used < self.limit:
             return True
         # used >= limit
         if (time.time() - self.seconds) > self.start:
             return True
+        
+    def timeLeft(self):
+        t = (self.start + self.seconds) - time.time()
+        if t < 0:
+            return 0 # already reset
+        else:
+            return t
         
     def use(self): 
         if self.start == None:
@@ -64,8 +92,8 @@ def getRateLimit(url):
     counts = []
     for limit in rate_limits:
         limit.use()
-        limits.append('%s:%s'%(limit.limit, limit.second))
-        counts.append('%s:%s'%(limit.used, limit.second))
+        limits.append('%s:%s'%(limit.limit, limit.seconds))
+        counts.append('%s:%s'%(limit.used, limit.seconds))
     headers = {
         'X-App-Rate-Limit':','.join(limits), 
         'X-App-Rate-Limit-Count':','.join(counts)
@@ -80,8 +108,8 @@ def getMethodLimit(url):
     counts = []
     for limit in method_limits[url]:
         limit.use()
-        limits.append('%s:%s'%(limit.limit, limit.second))
-        counts.append('%s:%s'%(limit.used, limit.second))
+        limits.append('%s:%s'%(limit.limit, limit.seconds))
+        counts.append('%s:%s'%(limit.used, limit.seconds))
     headers = {
         'X-Method-Rate-Limit':','.join(limits), 
         'X-Method-Rate-Limit-Count':','.join(counts)
@@ -89,42 +117,27 @@ def getMethodLimit(url):
     return headers
         
         
-def available(url=None):
+def getAvailable(url=None):
+    # Sources from the X-Rate-Limit-Type field
+    seconds = None
     for limit in rate_limits:
         if not limit.available():
-            return (False, 'rate')
+            if seconds == None or seconds < limit.timeLeft():
+                seconds = limit.timeLeft()
+    if seconds != None:
+        return (False, 'application', seconds)
+        
     if url != None:
+        if not url in method_limits:
+            newMethodLimit(url)
         for limit in method_limits[url]:
             if not limit.available():
-                return (False, 'method')
-    return (True, 'all')
+                if seconds == None or seconds < limit.timeLeft():
+                    seconds = limit.timeLeft()
+    if seconds != None:
+        return (False, 'method', seconds)
         
-        
-def generate_200(url):
-    headers = {
-        "Content-Type": "application/json;charset=utf-8"
-    }
-    body = ''
-    code = 200
-    return code, headers, body
-        
-def generate_403(url):
-    headers = {}
-    body = ''
-    code = 403
-    return code, headers, body
-        
-def generate_429(url):
-    headers = {}
-    body = ''
-    code = 429
-    return code, headers, body
-        
-def generate_500(url):
-    headers = {}
-    body = ''
-    code = 500
-    return code, headers, body
+    return (True, 'service', seconds)
         
         
 def startServer():
@@ -138,11 +151,11 @@ def startServer():
                 print('Error reading config file, malformed JSON:')
                 print('\t{}'.format(e))
                 exit(0)
-        port = config['server']['port'] + 1
+        port = int(config['server']['port']) + 1
     except Exception as e:
         print('Unable to set test server port: %s'%e)
         
-    server = http.server.HTTPServer('127.0.0.1', port, MyHTTPHandler)
+    server = http.server.HTTPServer(('127.0.0.1', port), MyHTTPHandler)
 
     try:
         server.serve_forever()

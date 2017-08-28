@@ -77,6 +77,7 @@ class Platform():
     def setLimit(self, headers):
         # Set self.limits
         #self.lock.acquire()
+        print('Headers: %s'%headers)
         limits = headers['X-App-Rate-Limit'].split(',')
         for limit in limits:
             requests, seconds = limit.split(':')

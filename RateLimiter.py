@@ -9,6 +9,7 @@ from multiprocessing.managers import SyncManager
 import time
 from collections import deque
 import urllib.request
+import urllib.error
 
 from Platform import Platform
 
@@ -223,12 +224,16 @@ def retriever(running, platforms, r_queue, r_condition, get_dict, get_condition)
             #    print('Retriever end: %s'%(t-startTime))
                 
             # handle 200 response
+            print('Checking 200 response')
             if platform_needs_limit or method_needs_limit:
                 headers = dict(zip(response.headers.keys(), response.headers.values()))
+                print('Zipped headers')
                 platform_id = identifyPlatform(data['url'])
                 platform = platforms[platform_id]
                 if platform_needs_limit:
+                    print('Setting platform limit')
                     platform.setLimit(headers)
+                    print('platform limit set')
                 if method_needs_limit:
                     platform.setEndpointLimit(data['url'], headers)
                 platforms.update([(platform_id, platform)])
@@ -246,9 +251,13 @@ def retriever(running, platforms, r_queue, r_condition, get_dict, get_condition)
                 reply_condition.notify()
                 reply_condition.release()
             
-        except Exception as e:
-            print('Error! %s'%e)
+        except urllib.error.HTTPError as e:
+            print('Error from API: %s'%e)
             # TODO: handle the error (500, 403, 404, 429)
+        except Exception as e:
+            print('Other error: %s'%e)
+            print('URL: %s'%data['url'])
+            
         
     print('Retriever shut down')
     
@@ -322,7 +331,7 @@ def main():
     # A pool closes, don't want it to close.
     reply_list = []
     reply_args = (running, reply_queue, reply_condition)
-    for i in range(config['threads']['return_threads'])
+    for i in range(config['threads']['return_threads']):
         r = Process(target=outbound, args=reply_args, name='Reply_%s'%i)
         r.deamon = True
         reply_list.append(r)

@@ -6,7 +6,6 @@ from Endpoint import Endpoint
 from Platform import Platform
 
 config_path = 'config.json'
-target_url = 'https://na1.api.riotgames.com/lol/champion-mastery/v3/champion-masteries/by-summoner/28341307'
 server_connection = 'http://'
 
 
@@ -330,16 +329,21 @@ def grabWhenReady(platform):
         time.sleep(next - time.time())
     return platform.get()
     
-def testRateLimiter():
+    
+def readConfig():
     with open(config_path) as f:
         data = f.read()
         try:
             config = json.loads(data)
-            server_url = '%s%s:%s'%(server_connection, config['server']['host'], config['server']['port'])
+            return config
         except ValueError as e:
             print('Error reading config file, malformed JSON:')
             print('\t{}'.format(e))
             exit(0)
+    
+def testRateLimiter():
+    config = readConfig()
+    server_url = '%s%s:%s'%(server_connection, config['server']['host'], config['server']['port'])
 
     output = input('Display output? (y/n, default=n): ')
     if len(output) > 0 and 'y' in output.lower() :
@@ -358,6 +362,51 @@ def testRateLimiter():
         if output:
             print(response.read().decode('utf-8'))
 
+
+def issueRequest(server_url, target_url, method='GET', response_url=''):
+    r = requests.Request(server_url, method=method)
+    r.add_header('url', target_url)
+    r.add_header('return_url', response_url)
+    try:
+        response = requests.urlopen(r)
+        return response
+    except Exception as e:
+        return e
+        
+def testWithFakeServer():
+    config = readConfig()
+    server_url = 'http://%s:%s'%(config['server']['host'], int(config['server']['port']))
+    test_server_url = 'http://%s:%s'%(config['server']['host'], int(config['server']['port']) + 1)
+    
+    while True:
+        try:
+            print('1) Issue GET request')
+            print('2) Issue POST requests')
+            print('3) Set Test Server mode')
+            choice = int(input('Choice: '))
+            if choice == 1:
+                # TODO: Allow multiple fake commands to be issued
+                print('Firing GET commands. Press CTRL+C to return to the previous menu')
+                
+                try:
+                    while True:
+                        input('Press enter to issue query')
+                        response = issueRequest(server_url, '%s/some/path/'%test_server_url, 'GET', test_server_url)
+                        print(response.read().decode('utf-8'))
+
+                except KeyboardInterrupt:
+                    continue
+                except Exception as e:
+                    print('Error while handling request, aborting.\n\t%s'%e)
+            elif choice == 2:
+                pass
+            elif choice == 3:
+                pass
+            else:
+                print('Unrecognized input')
+            
+        except KeyboardInterrupt:
+            break
         
 if __name__ == '__main__':
     print('1) Regression Testing')
@@ -369,6 +418,7 @@ if __name__ == '__main__':
         testPlatform()
         testScenario()
     elif choice == '2':
-        print('Please ensure that the Rate Limiter is running in another console')
-        testRateLimiter()
+        print('Please ensure that RateLimiter.py and tester_server are running in seprate consoles')
+        #testRateLimiter()
+        testWithFakeServer()
     
