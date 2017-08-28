@@ -18,6 +18,9 @@ class MyHTTPHandler(http.server.BaseHTTPRequestHandler):
     
     def do_POST(self):
         # Collect responses from RateLimiter
+        print('Got message')
+        content_len = int(self.headers.getheader('content-length', 0))
+        print('\t{url} - {code}\n\t{body}'.format(url=self.headers.get('url'), code=self.headers.get('code'), body=self.rfile.read(content_len)))
         pass
         
     def do_PUT(self):

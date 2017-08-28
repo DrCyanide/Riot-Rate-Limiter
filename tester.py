@@ -384,9 +384,9 @@ def testWithFakeServer():
             print('2) Issue POST requests')
             print('3) Set Test Server mode')
             choice = int(input('Choice: '))
-            if choice == 1:
+            if choice == 1: # GET
                 # TODO: Allow multiple fake commands to be issued
-                print('Firing GET commands. Press CTRL+C to return to the previous menu')
+                print('Firing GET commands.\nPress CTRL+C to return to the previous menu')
                 
                 try:
                     while True:
@@ -395,17 +395,29 @@ def testWithFakeServer():
                         print(response.read().decode('utf-8'))
 
                 except KeyboardInterrupt:
+                    print()
                     continue
                 except Exception as e:
                     print('Error while handling request, aborting.\n\t%s'%e)
-            elif choice == 2:
-                pass
-            elif choice == 3:
+            elif choice == 2: # POST
+                print('Firing POST commands. Check test_server.py for responses.\nPress CTRL+C to return to the previous menu')
+                
+                try:
+                    while True:
+                        input('Press enter to issue query')
+                        response = issueRequest(server_url, '%s/some/path/'%test_server_url, 'POST', test_server_url)
+                except KeyboardInterrupt:
+                    print()
+                    continue
+                except Exception as e:
+                    print('Error while handling request, aborting.\n\t%s'%e)
+            elif choice == 3: # PUT mode
                 pass
             else:
                 print('Unrecognized input')
             
         except KeyboardInterrupt:
+            print()
             break
         
 if __name__ == '__main__':

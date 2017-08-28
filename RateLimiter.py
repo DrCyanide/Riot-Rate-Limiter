@@ -10,6 +10,7 @@ import time
 from collections import deque
 import urllib.request
 import urllib.error
+import traceback
 
 from Platform import Platform
 
@@ -196,7 +197,7 @@ def ticker(running, platforms, ticker_condition, r_queue, r_condition):
     print('Ticker shut down')
 
 
-def retriever(running, platforms, r_queue, r_condition, get_dict, get_condition):
+def retriever(running, platforms, r_queue, r_condition, get_dict, get_condition, reply_queue, reply_condition):
     print('Retriever started')
     while running.is_set():
         data = {}
@@ -224,16 +225,12 @@ def retriever(running, platforms, r_queue, r_condition, get_dict, get_condition)
             #    print('Retriever end: %s'%(t-startTime))
                 
             # handle 200 response
-            print('Checking 200 response')
             if platform_needs_limit or method_needs_limit:
                 headers = dict(zip(response.headers.keys(), response.headers.values()))
-                print('Zipped headers')
                 platform_id = identifyPlatform(data['url'])
                 platform = platforms[platform_id]
                 if platform_needs_limit:
-                    print('Setting platform limit')
                     platform.setLimit(headers)
-                    print('platform limit set')
                 if method_needs_limit:
                     platform.setEndpointLimit(data['url'], headers)
                 platforms.update([(platform_id, platform)])
@@ -246,8 +243,9 @@ def retriever(running, platforms, r_queue, r_condition, get_dict, get_condition)
                 get_condition.release()
             else:
                 data['response'] = response_body
+                data['code'] = '200'
                 reply_condition.acquire()
-                reply_queue.add(data)
+                reply_queue.put(data)
                 reply_condition.notify()
                 reply_condition.release()
             
@@ -256,6 +254,7 @@ def retriever(running, platforms, r_queue, r_condition, get_dict, get_condition)
             # TODO: handle the error (500, 403, 404, 429)
         except Exception as e:
             print('Other error: %s'%e)
+            print(traceback.format_exc())
             print('URL: %s'%data['url'])
             
         
@@ -275,8 +274,8 @@ def outbound(running, reply_queue, reply_condition):
             data = reply_queue.get()
             
             request = urllib.request.Request(data['return_url'], data['response'], method='POST')
-            request.addheader({'url':data['url']})
-            request.addheader({'':''})
+            request.add_header('url', data['url'])
+            request.add_header('code', data['code'])
             urllib.request.urlopen(request)
         except Exception as e:
             print('Outbound error: %s'%e)
@@ -339,7 +338,7 @@ def main():
     
     # A pool closes, don't want it to close.
     r_list = []
-    r_args = (running, platforms, r_queue, r_condition, get_dict, get_condition)
+    r_args = (running, platforms, r_queue, r_condition, get_dict, get_condition, reply_queue, reply_condition)
     for i in range(config['threads']['api_threads']):
         r = Process(target=retriever, args=r_args, name='Retriever_%s'%i)
         r.deamon = True
