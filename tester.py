@@ -355,9 +355,7 @@ def testRateLimiter():
         input('Press enter to issue request')
 
         r = requests.Request(server_url)
-        r.add_header('url',target_url)
-        #r.add_header('return_url', 'http://127.0.0.1')
-        #r.add_header('api_name', 'test_1')
+        r.add_header('X-Url',target_url)
         response = requests.urlopen(r)
         if output:
             print(response.read().decode('utf-8'))
@@ -365,8 +363,8 @@ def testRateLimiter():
 
 def issueRequest(server_url, target_url, method='GET', response_url=''):
     r = requests.Request(server_url, method=method)
-    r.add_header('url', target_url)
-    r.add_header('return_url', response_url)
+    r.add_header('X-Url', target_url)
+    r.add_header('X-Return-Url', response_url)
     try:
         response = requests.urlopen(r)
         return response

@@ -29,6 +29,21 @@ logTimes = True
 startTime = None
 
 class MyHTTPHandler(http.server.BaseHTTPRequestHandler): 
+    def do_OPTIONS(self): # For CORS requests
+        self.send_response(200, "ok")
+        #self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'GET, POST, PUT, OPTIONS')
+        self.send_header("Access-Control-Allow-Headers", "X-Requested-With")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Allow-Headers", "X-Url")
+        self.send_header("Access-Control-Allow-Headers", "X-Return-Url")
+        
+        self.end_headers()
+
+    def end_headers (self):
+        self.send_header('Access-Control-Allow-Origin', '*')
+        http.server.BaseHTTPRequestHandler.end_headers(self)
+
     def do_GET(self):
         self.handleRequest()
 
@@ -49,9 +64,9 @@ class MyHTTPHandler(http.server.BaseHTTPRequestHandler):
             print('Start: %s'%startTime)
         
         data = {}
-        data['url'] = self.headers.get('url')
+        data['url'] = self.headers.get('X-Url')
         data['method'] = self.command.upper()
-        data['return_url'] = self.headers.get('return_url')
+        data['return_url'] = self.headers.get('X-Return-Url')
         
         # The Riot API has no commands where you just send data, so no return_url = error
         if  data['method'] in ['PUT','POST'] and (data['return_url'] == None):
