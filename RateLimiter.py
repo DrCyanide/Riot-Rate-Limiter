@@ -65,6 +65,12 @@ class MyHTTPHandler(http.server.BaseHTTPRequestHandler):
         
         data = {}
         data['url'] = self.headers.get('X-Url')
+        if data['url'] == None:
+            self.send_response(400)
+            self.wfile.write('No X-Url header detected')
+            self.end_headers()
+            return
+        
         data['method'] = self.command.upper()
         data['return_url'] = self.headers.get('X-Return-Url')
         
