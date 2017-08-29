@@ -1,0 +1,21 @@
+<!doctype=html>
+<html>
+<head>
+<title>JQuery Test</title>
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/1.12.2/jquery.min.js"></script>
+<script>
+var server = "http://127.0.0.1:8000"
+var testURL = "https://na1.api.riotgames.com/lol/league/v3/positions/by-summoner/28341307";
+
+// Wait for JQuery to load
+$(document).ready( function() {
+    $.ajax({url:server, headers:{"X-Url":testURL}}).done( function(r){
+        $("div").text(r);
+    });
+});
+</script>
+</head>
+<body>
+<div>Loading...</div>
+</body>
+</html>
