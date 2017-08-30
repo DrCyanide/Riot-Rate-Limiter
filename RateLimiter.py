@@ -218,7 +218,7 @@ def ticker(running, platforms, ticker_condition, r_queue, r_condition):
     print('Ticker shut down')
 
 
-def retriever(running, platforms, r_queue, r_condition, get_dict, get_condition, reply_queue, reply_condition):
+def retriever(running, api_key, platforms, r_queue, r_condition, get_dict, get_condition, reply_queue, reply_condition):
     print('Retriever started')
     while running.is_set():
         data = {}
@@ -272,7 +272,8 @@ def retriever(running, platforms, r_queue, r_condition, get_dict, get_condition,
             
         except urllib.error.HTTPError as e:
             print('Error from API: %s'%e)
-            # TODO: handle the error (500, 403, 404, 429)
+            # TODO: handle the error (500, 403, 404, 429, 401)
+            
         except Exception as e:
             print('Other error: %s'%e)
             print(traceback.format_exc())
@@ -308,7 +309,7 @@ def readConfig():
             data = f.read()
             try:
                 config = json.loads(data)
-                api_key = config['riot_games']['api_key']
+                api_key = config['riot_games']['api_key'].strip()
             except ValueError as e:
                 print('Error reading config file, malformed JSON:')
                 print('\t{}'.format(e))
@@ -359,7 +360,7 @@ def main():
     
     # A pool closes, don't want it to close.
     r_list = []
-    r_args = (running, platforms, r_queue, r_condition, get_dict, get_condition, reply_queue, reply_condition)
+    r_args = (running, api_key, platforms, r_queue, r_condition, get_dict, get_condition, reply_queue, reply_condition)
     for i in range(config['threads']['api_threads']):
         r = Process(target=retriever, args=r_args, name='Retriever_%s'%i)
         r.deamon = True
