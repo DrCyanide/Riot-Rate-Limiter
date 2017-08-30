@@ -169,138 +169,155 @@ def identifyPlatform(url):
 
 def ticker(running, platforms, ticker_condition, r_queue, r_condition):
     print('Ticker started')
-    while running.is_set():
-        next_run = None
-        for platform_slug in platforms.keys():
-            if platforms[platform_slug].available():
-                next_run = platforms[platform_slug].timeNextAvailable()
-                break # at least one platform ready
-            else:
-                next = platforms[platform_slug].timeNextAvailable()
-                if next_run == None or next < next_run:
-                    next_run = next
+    try:
+        while running.is_set():
+            next_run = None
+            for platform_slug in platforms.keys():
+                if platforms[platform_slug].available():
+                    next_run = platforms[platform_slug].timeNextAvailable()
+                    break # at least one platform ready
+                else:
+                    next = platforms[platform_slug].timeNextAvailable()
+                    if next_run == None or next < next_run:
+                        next_run = next
+                
+                    
+            if next_run == None:
+                #print("Ticker didn't find anything, sleeping")
+                ticker_condition.acquire()
+                ticker_condition.wait()
+                ticker_condition.release()
+                continue
+            #else:
+            #    print('Ticker found something')
             
-                
-        if next_run == None:
-            #print("Ticker didn't find anything, sleeping")
-            ticker_condition.acquire()
-            ticker_condition.wait()
-            ticker_condition.release()
-            continue
-        #else:
-        #    print('Ticker found something')
+            #if logTimes:
+            #    t = time.time()
+            #    print('Ticker: %s'%(t-startTime))
+            
+            # sleep until rate/method limits are OK
+            now = time.time()
+            if next_run > now:
+                time.sleep(next_run - now)
+            
+            for platform_slug in platforms.keys():
+                if platforms[platform_slug].available():
+                    #print('Platforms from Ticker: %s'%platforms)
+                    data = getData(platform_slug, platforms)
+                    #print('Got Data:')
+                    #print(data)
+                    
+                    # TODO: 
+                    # Check the retriever queue or the idle retrievers to make sure
+                    # that things don't get overloaded. Log when unable to keep up
+                    r_condition.acquire()
+                    r_queue.put(data)
+                    #print('r_queue size: %s'%r_queue.qsize())
+                    r_condition.notify()
+                    r_condition.release()
+        print('Ticker shut down')
         
-        #if logTimes:
-        #    t = time.time()
-        #    print('Ticker: %s'%(t-startTime))
-        
-        # sleep until rate/method limits are OK
-        now = time.time()
-        if next_run > now:
-            time.sleep(next_run - now)
-        
-        for platform_slug in platforms.keys():
-            if platforms[platform_slug].available():
-                #print('Platforms from Ticker: %s'%platforms)
-                data = getData(platform_slug, platforms)
-                #print('Got Data:')
-                #print(data)
-                
-                # TODO: 
-                # Check the retriever queue or the idle retrievers to make sure
-                # that things don't get overloaded. Log when unable to keep up
-                r_condition.acquire()
-                r_queue.put(data)
-                #print('r_queue size: %s'%r_queue.qsize())
-                r_condition.notify()
-                r_condition.release()
-                
-    print('Ticker shut down')
+    except KeyboardInterrupt:
+        # Manual Shutdown
+        pass
+
 
 
 def retriever(running, api_key, platforms, r_queue, r_condition, get_dict, get_condition, reply_queue, reply_condition):
     print('Retriever started')
-    while running.is_set():
-        data = {}
-        r_condition.acquire()
-        if r_queue.qsize() == 0:
-            r_condition.wait()
-            r_condition.release()
-            continue
-        else:
-            data, platform_needs_limit, method_needs_limit = r_queue.get()
-            r_condition.release()
-            #if logTimes:
-            #    t = time.time()
-            #    print('Retriever start: %s'%(t-startTime))
-        
-        # TODO:
-        # Some way to test without using up rate limit? Dummy mode?
-        try:
-            #print('Retriever - Data pulled: %s'%data)
-            r = urllib.request.Request(data['url'], headers={'X-Riot-Token': api_key})
-            response = urllib.request.urlopen(r)
-            
-            #if logTimes:
-            #    t = time.time()
-            #    print('Retriever end: %s'%(t-startTime))
-                
-            # handle 200 response
-            if platform_needs_limit or method_needs_limit:
-                headers = dict(zip(response.headers.keys(), response.headers.values()))
-                platform_id = identifyPlatform(data['url'])
-                platform = platforms[platform_id]
-                if platform_needs_limit:
-                    platform.setLimit(headers)
-                if method_needs_limit:
-                    platform.setEndpointLimit(data['url'], headers)
-                platforms.update([(platform_id, platform)])
-            
-            response_body = response.read()
-            if data['method'] == 'GET':
-                get_condition.acquire()
-                get_dict.update([(data['url'], response_body)])
-                get_condition.notify_all() # we don't have a specific response listening
-                get_condition.release()
+    try:
+        while running.is_set():
+            data = {}
+            r_condition.acquire()
+            if r_queue.qsize() == 0:
+                r_condition.wait()
+                r_condition.release()
+                continue
             else:
-                data['response'] = response_body
-                data['code'] = '200'
-                reply_condition.acquire()
-                reply_queue.put(data)
-                reply_condition.notify()
-                reply_condition.release()
+                data, platform_needs_limit, method_needs_limit = r_queue.get()
+                r_condition.release()
+                #if logTimes:
+                #    t = time.time()
+                #    print('Retriever start: %s'%(t-startTime))
             
-        except urllib.error.HTTPError as e:
-            print('Error from API: %s'%e)
-            # TODO: handle the error (500, 403, 404, 429, 401)
+            # TODO:
+            # Some way to test without using up rate limit? Dummy mode?
+            try:
+                #print('Retriever - Data pulled: %s'%data)
+                r = urllib.request.Request(data['url'], headers={'X-Riot-Token': api_key})
+                response = urllib.request.urlopen(r)
+                
+                #if logTimes:
+                #    t = time.time()
+                #    print('Retriever end: %s'%(t-startTime))
+                    
+                # handle 200 response
+                if platform_needs_limit or method_needs_limit:
+                    headers = dict(zip(response.headers.keys(), response.headers.values()))
+                    platform_id = identifyPlatform(data['url'])
+                    platform = platforms[platform_id]
+                    if platform_needs_limit:
+                        platform.setLimit(headers)
+                    if method_needs_limit:
+                        platform.setEndpointLimit(data['url'], headers)
+                    platforms.update([(platform_id, platform)])
+                
+                response_body = response.read()
+                if data['method'] == 'GET':
+                    get_condition.acquire()
+                    get_dict.update([(data['url'], response_body)])
+                    get_condition.notify_all() # we don't have a specific response listening
+                    get_condition.release()
+                else:
+                    data['response'] = response_body
+                    data['code'] = '200'
+                    reply_condition.acquire()
+                    reply_queue.put(data)
+                    reply_condition.notify()
+                    reply_condition.release()
+                
+            except urllib.error.HTTPError as e:
+                print('Error from API: %s'%e)
+                # TODO: handle the error (500, 403, 404, 429, 401)
+                response_body = e.read()
+                if data['method'] == 'GET':
+                    get_condition.acquire()
+                    get_dict.update([(data['url'], response_body)])
+                    get_condition.notify_all()
+                    get_condition.release()
+                
+            except Exception as e:
+                print('Other error: %s'%e)
+                print(traceback.format_exc())
+                print('URL: %s'%data['url'])
+                
             
-        except Exception as e:
-            print('Other error: %s'%e)
-            print(traceback.format_exc())
-            print('URL: %s'%data['url'])
-            
-        
-    print('Retriever shut down')
-    
+        print('Retriever shut down')
+    except KeyboardInterrupt:
+        # Manual Shutdown
+        pass
     
 def outbound(running, reply_queue, reply_condition):
-
-    while running:
-        reply_condition.acquire()
-        reply_condition.wait()
-        reply_condition.release()
-        
-        if reply_queue.qsize() == 0:
-            continue
-        try:
-            data = reply_queue.get()
+    try:
+        while running:
+            reply_condition.acquire()
+            reply_condition.wait()
+            reply_condition.release()
             
-            request = urllib.request.Request(data['return_url'], data['response'], method='POST')
-            request.add_header('url', data['url'])
-            request.add_header('code', data['code'])
-            urllib.request.urlopen(request)
-        except Exception as e:
-            print('Outbound error: %s'%e)
+            if reply_queue.qsize() == 0:
+                continue
+            try:
+                data = reply_queue.get()
+                
+                request = urllib.request.Request(data['return_url'], data['response'], method='POST')
+                request.add_header('url', data['url'])
+                request.add_header('code', data['code'])
+                urllib.request.urlopen(request)
+            except Exception as e:
+                print('Outbound error: %s'%e)
+    except KeyboardInterrupt:
+        # Manual Shutdown
+        pass
     
 def readConfig():
     global config, api_key
