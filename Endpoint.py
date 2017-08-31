@@ -12,6 +12,9 @@ class Endpoint():
         #self.lock = Lock()
         self.limits = {}
         
+        self.delay = False
+        self.delay_end = None
+        
         if first_request == None:
             self.first_request = time.time()
         else:
@@ -43,6 +46,11 @@ class Endpoint():
         if len(self.limits.keys()) > 0:
             return True
         return False
+      
+    def handleDelay(self, delay_end):
+        if delay_end > time.time():
+            self.delay_end = delay_end
+            self.delay = True
       
     def setLimit(self, headers):
         try:
@@ -98,7 +106,11 @@ class Endpoint():
         for limit_str in self.limits:
             if not self.limits[limit_str].ready():
                 return False
-        #print(self.getUsage())
+        if self.delay:
+            if time.time() < self.delay_end:
+                return False
+            else:
+                self.delay = False
         return True
         
     def getUsage(self):

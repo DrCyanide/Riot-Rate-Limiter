@@ -1,4 +1,5 @@
 import time
+import datetime
 #from multiprocessing import Lock
 from Limit import Limit
 from Endpoint import Endpoint
@@ -7,6 +8,8 @@ class Platform():
     def __init__(self, slug=''):
         self.slug = slug
         #self.lock = Lock()
+        self.delay = False
+        self.delay_end = None
 
         self.static_endpoints = {}
         self.static_count = 0
@@ -71,13 +74,45 @@ class Platform():
         for limit_str in self.platform_limits:
             if not self.platform_limits[limit_str].ready():
                 return False
+        if self.delay:
+            if now < self.delay_end:
+                return False
+            else:
+                self.delay = False
         return True
            
+           
+    def handleDelay(self, url, headers):
+        # Identify type of delay
+        limit_type = headers['X-Rate-Limit-Type']
+        delay_end = time.time() + 1 # default to 1 second in the future
+        if 'Retry-After' in headers:
+            # https://docs.python.org/3/library/datetime.html#strftime-strptime-behavior
+            date_format = '%a, %d %b %Y  %H:%M:%S %Z' # Not certain on %d, might be unpadded
+            response_time = datetime.datetime.strptime(headers['Date'], date_format)
+            response_time = response_time + datetime.deltatime(seconds=headers['Retry-After'])
+            delay_end = time.mktime(response_time.timetuple())
+        
+        if limit_type == None or limit_type.lower() == 'service': # Assume on method level
+            limit_type = 'method' # How's that for code reuse!
+            
+        if limit_type.lower() == 'application': # Set delay in the Platform
+            self.delay = True
+            self.delay_end = delay_end
+            return
+           
+        if limit_type.lower() == 'method': # Set delay in the Endpoint
+            endpoint_str = Endpoint.identifyEndpoint(url)
+            if 'static' in endpoint_str:
+                self.static_endpoints[endpoint_str].handleDelay(delay_end)
+            else:
+                self.limited_endpoints[endpoint_str].handleDelay(delay_end)
+            
+            
         
     def setLimit(self, headers):
         # Set self.limits
         #self.lock.acquire()
-        print('Headers: %s'%headers)
         limits = headers['X-App-Rate-Limit'].split(',')
         for limit in limits:
             requests, seconds = limit.split(':')

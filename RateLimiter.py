@@ -280,6 +280,9 @@ def retriever(running, api_key, platforms, r_queue, r_condition, get_dict, get_c
                 print('Error from API: %s'%e)
                 # TODO: handle the error (500, 403, 404, 429, 401)
                 response_body = e.read()
+                
+                # platform.handleDelay(url, headers)
+                
                 if data['method'] == 'GET':
                     get_condition.acquire()
                     get_dict.update([(data['url'], response_body)])
