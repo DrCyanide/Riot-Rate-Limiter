@@ -253,7 +253,8 @@ def retriever(running, api_key, platforms, r_queue, r_condition, get_dict, get_c
                     
                 # handle 200 response
                 if platform_needs_limit or method_needs_limit:
-                    headers = dict(zip(response.headers.keys(), response.headers.values()))
+                    #headers = dict(zip(response.headers.keys(), response.headers.values())) # pre 3.5?
+                    headers = dict(response.headers)
                     platform_id = identifyPlatform(data['url'])
                     platform = platforms[platform_id]
                     if platform_needs_limit:
@@ -279,10 +280,26 @@ def retriever(running, api_key, platforms, r_queue, r_condition, get_dict, get_c
             except urllib.error.HTTPError as e:
                 print('Error from API: %s'%e)
                 # TODO: handle the error (500, 403, 404, 429, 401)
+                if e.code == 429: # Rate Limit Issue
+                    platform_id = identifyPlatform(data['url'])
+                    platform = platforms[platform_id]
+                    platform.handleDelay(data['url'], dict(e.headers))
+                    platforms.update([(platform_id, platform)])
+                    retryRequest(data, platforms)
+                
+                # if e.code == 500:
+                #   Internal server issue
+                #   platform.handleDelay(url, headers)
+                #   retry
+                # if e.code == 401:
+                #   Invalid API Key
+                #   stop?
+                # if e.code == 403:
+                #   Blacklisted or Internal server issue
+                #   retry?
+  
                 response_body = e.read()
-                
-                # platform.handleDelay(url, headers)
-                
+
                 if data['method'] == 'GET':
                     get_condition.acquire()
                     get_dict.update([(data['url'], response_body)])
@@ -299,6 +316,22 @@ def retriever(running, api_key, platforms, r_queue, r_condition, get_dict, get_c
     except KeyboardInterrupt:
         # Manual Shutdown
         pass
+        
+        
+def retryRequest(data, platforms):
+    # TODO: Find a thread safe way to merge with addData(), rather than having 2 similar functions
+    if not 'attempts' in data:
+        data['attempts'] = 1
+    else:
+        data['attempts'] += 1
+    # if data['attempts'] >= max_attempts:
+    #   ... how to return that... 
+    platform_id = identifyPlatform(data['url'])
+    platform = platforms[platform_id]
+    platform.addData(data) # TODO: add this data to the front of the queue, don't keep it at the back
+    platforms.update([(platform_id, platform)])
+    
+    
     
 def outbound(running, reply_queue, reply_condition):
     try:
