@@ -143,6 +143,8 @@ class Endpoint():
         return r_time
         
     def timeNextAvailable(self):
+        if self.delay:
+            return self.delay_end
         if self.available():
             return time.time()
         return self.getResetTime()

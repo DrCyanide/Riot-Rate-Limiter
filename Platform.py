@@ -192,6 +192,8 @@ class Platform():
         # Return the time when the next request will be available
         # Factors in Method Limits
         # Use this so the Ticker isn't constantly hammering Platform
+        if self.delay:
+            return self.delay_end
         if self.static_count > 0:
             return self._soonestAvailable(self.static_endpoints)
         elif self.limited_count > 0:
