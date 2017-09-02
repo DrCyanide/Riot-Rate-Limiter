@@ -410,7 +410,17 @@ def testWithFakeServer():
                 except Exception as e:
                     print('Error while handling request, aborting.\n\t%s'%e)
             elif choice == 3: # PUT mode
-                pass
+                try:
+                    print("Select test server mode")
+                    valid_modes = ['normal', '400', '401', '403', '404', '429', '500']
+                    for i in range(len(valid_modes)):
+                        print('%s) %s'%(i+1, valid_modes[i]))
+                    selected = valid_modes[int(input('Mode: ')) - 1]
+                    r = requests.Request(test_server_url, method='PUT', headers={'X-Mode':selected})
+                    requests.urlopen(r)
+                    print('Mode changed to %s, returning to previous menu'%selected)
+                except Exception as e:
+                    print('Aborting mode selection, returning to previous menu')
             else:
                 print('Unrecognized input')
             

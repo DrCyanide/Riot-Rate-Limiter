@@ -76,7 +76,7 @@ class Endpoint():
         except Exception as e:
             print('Endpoint - setCount: %s'%e)
                 
-    def addURL(self, url):
+    def addURL(self, url, atFront=False):
         # TODO: Add a way to add to the front of the deque
         if self.name == '':
             self.name = Endpoint.identifyEndpoint(url)
@@ -85,10 +85,13 @@ class Endpoint():
                 raise Exception('Invalid URL, does not match endpoint')
         #self.lock.acquire()
         #self.url_queue.put(url)
-        self.url_deque.append(url)
+        if atFront:
+            self.url_deque.appendleft(url)
+        else:
+            self.url_deque.append(url)
         #self.lock.release()
         
-    def addData(self, data):
+    def addData(self, data, atFront=False):
         if self.name == '':
             self.name = Endpoint.identifyEndpoint(data['url'])
         else:
@@ -96,7 +99,10 @@ class Endpoint():
                 raise Exception('Invalid URL, does not match endpoint')
         #self.lock.acquire()
         #self.url_queue.put(url)
-        self.url_deque.append(data)
+        if atFront:
+            self.url_deque.appendleft(data)
+        else:
+            self.url_deque.append(data)
         #self.lock.release()
         
         

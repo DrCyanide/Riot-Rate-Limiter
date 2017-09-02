@@ -50,20 +50,20 @@ class Platform():
         #self.lock.release()
         
         
-    def addData(self, data):
+    def addData(self, data, atFront=False):
         # data is a dict with url inside, but other info too
         endpoint_str = Endpoint.identifyEndpoint(data['url'])
         #self.lock.acquire()
         if 'static' in endpoint_str:
             if not endpoint_str in self.static_endpoints:
                 self.static_endpoints[endpoint_str] = Endpoint()
-            self.static_endpoints[endpoint_str].addData(data)
+            self.static_endpoints[endpoint_str].addData(data, atFront)
             self.static_count += 1
         else:
             if not endpoint_str in self.limited_endpoints:
                 self.limited_endpoints[endpoint_str] = Endpoint()
                 self.ordered_limited_endpoints.append(endpoint_str)
-            self.limited_endpoints[endpoint_str].addData(data)
+            self.limited_endpoints[endpoint_str].addData(data, atFront)
             self.limited_count += 1
         #self.lock.release()
         
@@ -90,7 +90,7 @@ class Platform():
             # https://docs.python.org/3/library/datetime.html#strftime-strptime-behavior
             date_format = '%a, %d %b %Y  %H:%M:%S %Z' # Not certain on %d, might be unpadded
             response_time = datetime.datetime.strptime(headers['Date'], date_format)
-            response_time = response_time + datetime.deltatime(seconds=headers['Retry-After'])
+            response_time = response_time + datetime.timedelta(seconds=float(headers['Retry-After']))
             delay_end = time.mktime(response_time.timetuple())
         
         if limit_type == None or limit_type.lower() == 'service': # Assume on method level

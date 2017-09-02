@@ -54,6 +54,7 @@ class MyHTTPHandler(http.server.BaseHTTPRequestHandler):
         self.handleRequest()
         
     def handleRequest(self):
+        global platforms
         global startTime
         security_pass = self.checkSecurity()
         if not security_pass:
@@ -83,12 +84,12 @@ class MyHTTPHandler(http.server.BaseHTTPRequestHandler):
         platform_slug = identifyPlatform(data['url'])
         if platform_slug in platforms:
             platform_lock.acquire()
-            addData(platform_slug, data)
+            platforms, added = addData(data, platforms)
             platform_lock.release()
         else:
             platform_lock.acquire()
             platforms[platform_slug] = Platform(slug=platform_slug)
-            addData(platform_slug, data)
+            platforms, added = addData(data, platforms)
             platform_lock.release()
         #print('%s count: %s'%(platform_slug, platforms[platform_slug].count))
         
@@ -137,16 +138,26 @@ class MyHTTPHandler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
         return not intruder
         
-        
-def addData(platform_slug, data):
+    
+def addData(data, platforms, atFront=False, max_attempts=3):
+    # Returns platforms and if it was added
     # syncmanager dicts require the update() command to be run
     # before anything will be saved. The normal 'addData()' method
     # won't result in the object being pickled again, thus it will
     # look like there was no update.
-    global platforms
+    if not 'attempts' in data:
+        data['attempts'] = 0
+    data['attempts'] += 1
+    
+    if data['attempts'] >= max_attempts:
+        return platforms, False
+        
+    platform_slug = identifyPlatform(data['url'])
     p = platforms[platform_slug]
-    p.addData(data)
+    p.addData(data, atFront)
     platforms.update([(platform_slug,p)])
+    
+    return platforms, True
     
     
 def getData(platform_slug, platforms):
@@ -155,7 +166,7 @@ def getData(platform_slug, platforms):
     p = platforms[platform_slug]
     data = p.get()
     platforms.update([(platform_slug,p)])
-    return data
+    return platforms, data
     
     
 def identifyPlatform(url):
@@ -188,24 +199,18 @@ def ticker(running, platforms, ticker_condition, r_queue, r_condition):
                 ticker_condition.wait()
                 ticker_condition.release()
                 continue
-            #else:
-            #    print('Ticker found something')
-            
-            #if logTimes:
-            #    t = time.time()
-            #    print('Ticker: %s'%(t-startTime))
+            print('Ticker found something!')
             
             # sleep until rate/method limits are OK
             now = time.time()
             if next_run > now:
                 time.sleep(next_run - now)
+            else:
+                print('No sleep!\n\tNow: %s\n\tNext:%s'%(now, next_run))
             
             for platform_slug in platforms.keys():
                 if platforms[platform_slug].available():
-                    #print('Platforms from Ticker: %s'%platforms)
-                    data = getData(platform_slug, platforms)
-                    #print('Got Data:')
-                    #print(data)
+                    platforms, data = getData(platform_slug, platforms)
                     
                     # TODO: 
                     # Check the retriever queue or the idle retrievers to make sure
@@ -223,7 +228,7 @@ def ticker(running, platforms, ticker_condition, r_queue, r_condition):
 
 
 
-def retriever(running, api_key, platforms, r_queue, r_condition, get_dict, get_condition, reply_queue, reply_condition):
+def retriever(running, api_key, platforms, r_queue, r_condition, get_dict, get_condition, reply_queue, reply_condition, ticker_condition, platform_lock):
     print('Retriever started')
     try:
         while running.is_set():
@@ -285,7 +290,19 @@ def retriever(running, api_key, platforms, r_queue, r_condition, get_dict, get_c
                     platform = platforms[platform_id]
                     platform.handleDelay(data['url'], dict(e.headers))
                     platforms.update([(platform_id, platform)])
-                    retryRequest(data, platforms)
+                    
+                    platform_lock.acquire()
+                    platforms, added = addData(data, platforms, atFront=True)
+                    platform_lock.release()
+                    
+                    if not added:
+                        # TODO: Return a message about expiring
+                        pass
+                    else:
+                        print('Retrying!')
+                        ticker_condition.acquire()
+                        ticker_condition.notify()
+                        ticker_condition.release()
                 
                 # if e.code == 500:
                 #   Internal server issue
@@ -315,22 +332,7 @@ def retriever(running, api_key, platforms, r_queue, r_condition, get_dict, get_c
         print('Retriever shut down')
     except KeyboardInterrupt:
         # Manual Shutdown
-        pass
-        
-        
-def retryRequest(data, platforms):
-    # TODO: Find a thread safe way to merge with addData(), rather than having 2 similar functions
-    if not 'attempts' in data:
-        data['attempts'] = 1
-    else:
-        data['attempts'] += 1
-    # if data['attempts'] >= max_attempts:
-    #   ... how to return that... 
-    platform_id = identifyPlatform(data['url'])
-    platform = platforms[platform_id]
-    platform.addData(data) # TODO: add this data to the front of the queue, don't keep it at the back
-    platforms.update([(platform_id, platform)])
-    
+        pass   
     
     
 def outbound(running, reply_queue, reply_condition):
@@ -413,7 +415,7 @@ def main():
     
     # A pool closes, don't want it to close.
     r_list = []
-    r_args = (running, api_key, platforms, r_queue, r_condition, get_dict, get_condition, reply_queue, reply_condition)
+    r_args = (running, api_key, platforms, r_queue, r_condition, get_dict, get_condition, reply_queue, reply_condition, ticker_condition, platform_lock)
     for i in range(config['threads']['api_threads']):
         r = Process(target=retriever, args=r_args, name='Retriever_%s'%i)
         r.deamon = True

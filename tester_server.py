@@ -6,6 +6,9 @@ config_path = 'config.json'
 method_limits = {}
 rate_limits = []
 
+valid_modes = ['normal', '400', '401', '403', '404', '429', '500']
+current_mode = 'normal'
+
 class MyHTTPHandler(http.server.BaseHTTPRequestHandler): 
     def do_GET(self):
         # Imitate the Riot API, returning data with headers
@@ -20,14 +23,27 @@ class MyHTTPHandler(http.server.BaseHTTPRequestHandler):
         # Collect responses from RateLimiter
         print('Got message')
         content_len = int(self.headers.getheader('content-length', 0))
-        print('\t{url} - {code}\n\t{body}'.format(url=self.headers.get('url'), code=self.headers.get('code'), body=self.rfile.read(content_len)))
-        pass
+        print('\t{url} - {code}\n\t{body}'.format(url=self.headers.get('X-Url'), code=self.headers.get('X-Code'), body=self.rfile.read(content_len)))
+        self.send_response(200)
+        self.end_headers()
         
     def do_PUT(self):
         # Modify server mode to Normal (tries to imitate normal conditions) or Error (throw random errors)
-        pass
+        global current_mode
+        mode = self.headers.get('X-Mode')
+        if mode == None or not mode.lower() in valid_modes:
+            self.send_response(400)
+            self.end_headers()
+            return
+        current_mode = mode.lower()
+        self.send_response(200)
+        self.end_headers()
         
     def generate_response(self, code, source=None, seconds=None):
+        # Code is for normal mode. It gets replaced otherwise
+        if not current_mode == 'normal':
+            code = int(current_mode)
+            
         headers = getRateLimit(self.path)
         headers.update(getMethodLimit(self.path))
         #headers = dict(zip(getRateLimit(self.path), getMethodLimit(self.path)))
@@ -37,7 +53,7 @@ class MyHTTPHandler(http.server.BaseHTTPRequestHandler):
                 headers['Retry-After'] = seconds
         body = self.generate_body(code) 
         
-        self.send_response(200)
+        self.send_response(code)
         for header in headers.keys():
             self.send_header(header, headers[header])
         self.end_headers()
@@ -45,6 +61,17 @@ class MyHTTPHandler(http.server.BaseHTTPRequestHandler):
         
     def generate_body(self, code):
         body = {}
+        if code == 403:
+            body = {"status":{"message":"Forbidden","status_code":403}}
+        if code == 401:
+            body = {"status":{"message":"Unauthorized","status_code":401}}
+        if code == 400:
+            body = {"status":{"message":"Bad request - Path parameter 'queue' must be one of [RANKED_SOLO_5x5, RANKED_FLEX_SR, RANKED_FLEX_TT]","status_code":400}}
+        if code == 200:
+            body = {"some":["happy", "data"]}
+        if body == {}:
+            # I don't have an example of this code, return template
+            body = {"status":{"message":"Unknown Code response", "status_code":code}}
         return body
     
     
