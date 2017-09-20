@@ -251,17 +251,17 @@ def retriever(running, api_key, platforms, r_queue, r_condition, get_dict, get_c
                 #print('Retriever - Data pulled: %s'%data)
                 r = urllib.request.Request(data['url'], headers={'X-Riot-Token': api_key})
                 response = urllib.request.urlopen(r)
+               
+                # Update limits/counts
+                headers = dict(response.headers)
+                #headers = dict(zip(response.headers.keys(), response.headers.values())) # pre 3.5?
+                platform_id = identifyPlatform(data['url'])
+                platform = platforms[platform_id]
                 
-                #if logTimes:
-                #    t = time.time()
-                #    print('Retriever end: %s'%(t-startTime))
-                    
+                
                 # handle 200 response
+                
                 if platform_needs_limit or method_needs_limit:
-                    #headers = dict(zip(response.headers.keys(), response.headers.values())) # pre 3.5?
-                    headers = dict(response.headers)
-                    platform_id = identifyPlatform(data['url'])
-                    platform = platforms[platform_id]
                     if platform_needs_limit:
                         platform.setLimit(headers)
                     if method_needs_limit:
@@ -296,8 +296,19 @@ def retriever(running, api_key, platforms, r_queue, r_condition, get_dict, get_c
                     platform_lock.release()
                     
                     if not added:
-                        # TODO: Return a message about expiring
-                        pass
+                        response_body = e.read()
+                        if data['method'] == 'GET':
+                            get_condition.acquire()
+                            get_dict.update([(data['url'], response_body)])
+                            get_condition.notify_all() # we don't have a specific response listening
+                            get_condition.release()
+                        else:
+                            data['response'] = response_body
+                            data['code'] = e.code
+                            reply_condition.acquire()
+                            reply_queue.put(data)
+                            reply_condition.notify()
+                            reply_condition.release()
                     else:
                         print('Retrying!')
                         ticker_condition.acquire()
@@ -327,6 +338,7 @@ def retriever(running, api_key, platforms, r_queue, r_condition, get_dict, get_c
                 print('Other error: %s'%e)
                 print(traceback.format_exc())
                 print('URL: %s'%data['url'])
+                # return 500
                 
             
         print('Retriever shut down')

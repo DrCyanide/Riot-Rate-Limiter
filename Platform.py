@@ -24,7 +24,6 @@ class Platform():
         
     @property
     def count(self):
-        #print('Count for slug %s = %s, %s'%(self.slug, self.static_count + self.limited_count, self.limited_endpoints))
         return self.static_count + self.limited_count
         
     def hasURL(self):
@@ -81,6 +80,30 @@ class Platform():
                 self.delay = False
         return True
            
+           
+    def handleHeaders(self, url, headers):
+        # Check that X-App-Rate-Limit didn't change
+        if 'X-App-Rate-Limit' in headers:
+            limits = headers['X-App-Rate-Limit'].split(',')
+            intervals = [limit.split(':')[1] for limit in limits]
+            if sorted(intervals) != sorted(list(self.platform_limits.keys())):
+                print('Platform limit changed: %s'%limits)
+                self.platform_limits = {}
+                self.setLimit(headers)
+            
+        # Check that X-App-Rate-Limit-Count is still OK
+        if 'X-App-Rate-Limit-Count' in headers:
+            counts = headers['X-App-Rate-Limit-Count'].split(',')
+            intervals = [limit.split(':')[1] for limit in limits]
+            counts = [limit.split(':')[0] for limit in limits]
+            countLookup = dict(zip(intervals, counts))
+            for seconds in self.platform_limits:
+                if countLookup[seconds] > self.platform_limits[seconds].used:
+                    self.setCount(headers)
+                    break
+           
+        # Check for errors?
+        
            
     def handleDelay(self, url, headers):
         # Identify type of delay
@@ -193,7 +216,10 @@ class Platform():
         # Factors in Method Limits
         # Use this so the Ticker isn't constantly hammering Platform
         if self.delay:
-            return self.delay_end
+            if time.time() < self.delay_end:
+                return self.delay_end
+            else:
+                self.delay = False
         if self.static_count > 0:
             return self._soonestAvailable(self.static_endpoints)
         elif self.limited_count > 0:
@@ -206,6 +232,11 @@ class Platform():
         
         
     def available(self):
+        if self.delay:
+            if time.time() < self.delay_end:
+                return self.delay_end
+            else:
+                self.delay = False
         if self.static_count > 0:
             for endpoint_str in self.static_endpoints:
                 if self.static_endpoints[endpoint_str].available():
@@ -241,6 +272,9 @@ class Platform():
         obj = None
         endpoint_limit_needed = False
         platform_limit_needed = False
+        
+        if not self.available():
+            return obj, platform_limit_needed, endpoint_limit_needed
         
         #self.lock.acquire()
         try:
