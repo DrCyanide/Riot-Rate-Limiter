@@ -89,7 +89,22 @@ class TestLimit(unittest.TestCase):
         self.assertTrue(self.limit.getResetTime() > time.time())
         
         
-# Endpoint
+class TestEndpoint(unittest.TestCase):
+    def setUp(self):
+        self.summoner_url_template = 'https://na1.api.riotgames.com/lol/summoner/v3/summoners/by-name/{name}'
+        self.match_url_template = 'https://na1.api.riotgames.com/lol/match/v3/matches/{matchid}'
+        self.static_url = 'https://na1.api.riotgames.com/lol/static-data/v3/champions?dataById=false'
+        
+    def test_identifyEndpoint(self):
+        e = Endpoint.identifyEndpoint(self.summoner_url_template.format(name='BillyBob'))
+        self.assertTrue(e == 'lol/summoner/v3/summoners/by-name')
+        e = Endpoint.identifyEndpoint(self.match_url_template.format(matchid='3'))
+        self.assertTrue(e == 'lol/match/v3/matches')
+        e = Endpoint.identifyEndpoint(self.match_url_template.format(matchid='324'))
+        self.assertTrue(e == 'lol/match/v3/matches')
+        e = Endpoint.identifyEndpoint(self.static_url)
+        self.assertTrue(e == 'lol/static-data/v3/champions')
+        
 # Platform
 # RateLimiter
 
