@@ -10,6 +10,15 @@ from Platform import Platform
 config_path = 'config.json'
 server_connection = 'http://'
 
+
+def rtime(timestamp=None, precision=2):
+    # precision 3 normally works on my computer, but occassionally fails.
+    # I'd rather not have occassional false failures
+    if timestamp == None:
+        timestamp = time.time()
+    return round(timestamp, precision)
+
+
 class TestLimit(unittest.TestCase):
     def setUp(self):
         self.seconds = 0.1
@@ -25,7 +34,7 @@ class TestLimit(unittest.TestCase):
     def test_use(self):
         self.limit.use()
         #self.assertTrue(self.limit.getResetTime() < time.time() + self.seconds)
-        self.assertEqual(round(self.limit.getResetTime(), 3), round(time.time() + self.seconds, 3))
+        self.assertEqual(rtime(self.limit.getResetTime()), rtime(time.time() + self.seconds))
         self.assertEqual(self.limit.used, 1)
         self.limit.use()
         self.limit.use()
@@ -39,7 +48,7 @@ class TestLimit(unittest.TestCase):
         self.assertEqual(self.limit.used, 1)
         self.assertTrue(self.limit.getResetTime() > start_time)
         #self.assertTrue(self.limit.getResetTime() < time.time() + self.seconds)
-        self.assertEqual(round(self.limit.getResetTime(), 3), round(time.time() + self.seconds, 3))
+        self.assertEqual(rtime(self.limit.getResetTime()), rtime(time.time() + self.seconds))
         time.sleep(0.1)
         self.assertTrue(self.limit.ready())
         self.assertEqual(self.limit.used, 0)
@@ -98,6 +107,7 @@ class TestEndpoint(unittest.TestCase):
         self.static_url = 'https://na1.api.riotgames.com/lol/static-data/v3/champions?dataById=false'
         self.fake_name = 'BillyBob'
         self.endpoint = Endpoint()
+        self.default_data = {'url':self.match_url_template.format(matchid=1)}
         self.headers = {
             'Connection': 'keep-alive', 
             'transfer-encoding': 'chunked', 
@@ -155,7 +165,7 @@ class TestEndpoint(unittest.TestCase):
         
     def test_addData(self):
         self.assertRaises(Exception, self.endpoint.addData, ({'other':'thing'},))
-        self.endpoint.addData({'url':self.match_url_template.format(matchid=1)})
+        self.endpoint.addData(self.default_data)
         self.assertEqual(self.endpoint.count, 1)
         self.assertRaises(Exception, self.endpoint.addData, ({'other':'thing'},))
         self.assertRaises(Exception, self.endpoint.addData, ({'url':self.summoner_url_template.format(name=self.fake_name)},))
@@ -183,7 +193,7 @@ class TestEndpoint(unittest.TestCase):
         self.endpoint.setLimit(self.headers)
         count, seconds = self.headers['X-Method-Rate-Limit'].split(':')
         self.assertEqual(self.endpoint.getUsage(), '0:%s'%count)
-        self.endpoint.addData({'url':self.match_url_template.format(matchid=1)})
+        self.endpoint.addData(self.default_data)
         self.endpoint.get()
         self.assertEqual(self.endpoint.getUsage(), '1:%s'%count)
         new_headers = copy.copy(self.headers)
@@ -192,7 +202,22 @@ class TestEndpoint(unittest.TestCase):
         self.assertEqual(self.endpoint.getUsage(), '0:%s'%count)
         
     def test_getResetTime(self):
-        self.assertEqual(round(self.endpoint.getResetTime(), 3), round(time.time(), 3))
+        self.assertEqual(rtime(self.endpoint.getResetTime()), rtime())        
+        self.endpoint.setLimit(self.headers)
+        self.endpoint.addData(self.default_data)
+        self.assertEqual(rtime(self.endpoint.getResetTime()), rtime())
+        
+        count, seconds = self.headers['X-Method-Rate-Limit'].split(':')
+        new_headers = copy.copy(self.headers)
+        new_headers['X-Method-Rate-Limit-Count'] = '%s:%s'%(count,seconds)
+        self.endpoint.setLimit(new_headers)
+        self.endpoint.setCount(new_headers)
+        self.assertTrue(len(self.endpoint.limits) > 0)
+        self.assertFalse(self.endpoint.available())
+        self.assertEqual(rtime(self.endpoint.limits[seconds].start), rtime())
+        self.assertEqual(rtime(self.endpoint.getResetTime()), rtime(time.time() + int(seconds)))
+        
+        
         
 # Platform
 # RateLimiter

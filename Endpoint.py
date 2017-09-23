@@ -61,7 +61,7 @@ class Endpoint():
                     requests, seconds = limit.split(':')
                     if seconds in self.limits:
                         self.limits[seconds].setLimit(seconds, requests)
-                        old_limits.pop(seconds)
+                        old_limits.pop(old_limits.index(seconds))
                     else:
                         self.limits[seconds] = Limit(seconds, requests)
                 for seconds in old_limits:
