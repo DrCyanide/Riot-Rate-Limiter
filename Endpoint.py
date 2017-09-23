@@ -56,12 +56,16 @@ class Endpoint():
         try:
             if 'X-Method-Rate-Limit' in headers:
                 limits = headers['X-Method-Rate-Limit'].split(',')
+                old_limits = list(self.limits.keys())
                 for limit in limits:
                     requests, seconds = limit.split(':')
                     if seconds in self.limits:
                         self.limits[seconds].setLimit(seconds, requests)
+                        old_limits.pop(seconds)
                     else:
                         self.limits[seconds] = Limit(seconds, requests)
+                for seconds in old_limits:
+                    self.limits.pop(seconds)
         except Exception as e:
             print('Endpoint - setLimit: e'%e)
     
@@ -92,10 +96,14 @@ class Endpoint():
         #self.lock.release()
         
     def addData(self, data, atFront=False):
+        if not 'url' in data:
+            raise Exception('Invalid URL, required for addData')
+        name = Endpoint.identifyEndpoint(data['url'])
+            
         if self.name == '':
-            self.name = Endpoint.identifyEndpoint(data['url'])
+            self.name = name
         else:
-            if self.name != Endpoint.identifyEndpoint(data['url']):
+            if self.name != name:
                 raise Exception('Invalid URL, does not match endpoint')
         #self.lock.acquire()
         #self.url_queue.put(url)

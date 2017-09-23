@@ -1,5 +1,5 @@
 import unittest
-
+import copy
 import json
 import time
 import urllib.request as requests
@@ -20,63 +20,65 @@ class TestLimit(unittest.TestCase):
         self.limit = Limit()
         self.assertTrue(self.limit.ready())
         self.assertTrue(self.limit.getResetTime() < time.time())
-        self.assertTrue(self.limit.used == 0)
+        self.assertEqual(self.limit.used, 0)
         
     def test_use(self):
         self.limit.use()
-        self.assertTrue(self.limit.getResetTime() < time.time() + self.seconds)
-        self.assertTrue(self.limit.used == 1)
+        #self.assertTrue(self.limit.getResetTime() < time.time() + self.seconds)
+        self.assertEqual(round(self.limit.getResetTime(), 3), round(time.time() + self.seconds, 3))
+        self.assertEqual(self.limit.used, 1)
         self.limit.use()
         self.limit.use()
-        self.assertTrue(self.limit.used == 3)
+        self.assertEqual(self.limit.used, 3)
         
     def test_ready(self):
         start_time = time.time()
         self.seconds = 0.1
         self.limit = Limit(seconds=self.seconds, limit=1, used=1)
         self.assertFalse(self.limit.ready())
-        self.assertTrue(self.limit.used == 1)
+        self.assertEqual(self.limit.used, 1)
         self.assertTrue(self.limit.getResetTime() > start_time)
-        self.assertTrue(self.limit.getResetTime() < time.time() + self.seconds)
+        #self.assertTrue(self.limit.getResetTime() < time.time() + self.seconds)
+        self.assertEqual(round(self.limit.getResetTime(), 3), round(time.time() + self.seconds, 3))
         time.sleep(0.1)
         self.assertTrue(self.limit.ready())
-        self.assertTrue(self.limit.used == 0)
+        self.assertEqual(self.limit.used, 0)
         self.limit.use()
-        self.assertTrue(self.limit.used == 1)
+        self.assertEqual(self.limit.used, 1)
 
     def test_formatNumbers(self):
         seconds, limit, used = self.limit._formatNumbers()
-        self.assertTrue(seconds == None)
-        self.assertTrue(limit == None)
-        self.assertTrue(used == None)
+        self.assertEqual(seconds, None)
+        self.assertEqual(limit, None)
+        self.assertEqual(used, None)
         
         seconds, limit, used = self.limit._formatNumbers(seconds='1', limit=12.0, used='5')
-        self.assertTrue(seconds == 1)
-        self.assertTrue(type(seconds) == float)
-        self.assertTrue(limit == 12)
-        self.assertTrue(type(limit) == int)
-        self.assertTrue(used == 5)
-        self.assertTrue(type(used) == int)
+        self.assertEqual(seconds, 1)
+        self.assertEqual(type(seconds), float)
+        self.assertEqual(limit, 12)
+        self.assertEqual(type(limit), int)
+        self.assertEqual(used, 5)
+        self.assertEqual(type(used), int)
         
     def test_setLimit(self):
-        self.assertTrue(self.limit.limit == self.limit_count)
+        self.assertEqual(self.limit.limit, self.limit_count)
         self.limit.setLimit(seconds=10, limit=100)
-        self.assertTrue(self.limit.limit == 100)
-        self.assertTrue(self.limit.seconds == 10)
-        self.assertTrue(self.limit.used == 0)
+        self.assertEqual(self.limit.limit, 100)
+        self.assertEqual(self.limit.seconds, 10)
+        self.assertEqual(self.limit.used, 0)
         
         self.limit.use()
         
         self.limit.setLimit(seconds=1, limit=90)
-        self.assertTrue(self.limit.limit == 90)
-        self.assertTrue(self.limit.seconds == 1)
-        self.assertTrue(self.limit.used == 1)
+        self.assertEqual(self.limit.limit, 90)
+        self.assertEqual(self.limit.seconds, 1)
+        self.assertEqual(self.limit.used, 1)
         
     def test_setUsed(self):
-        self.assertTrue(self.limit.used == 0)
+        self.assertEqual(self.limit.used, 0)
         self.assertTrue(self.limit.ready())
         self.limit.setUsed(1)
-        self.assertTrue(self.limit.used == 1)
+        self.assertEqual(self.limit.used, 1)
         self.assertFalse(self.limit.ready())
         
     def test_getResetTime(self):
@@ -94,9 +96,28 @@ class TestEndpoint(unittest.TestCase):
         self.summoner_url_template = 'https://na1.api.riotgames.com/lol/summoner/v3/summoners/by-name/{name}'
         self.match_url_template = 'https://na1.api.riotgames.com/lol/match/v3/matches/{matchid}'
         self.static_url = 'https://na1.api.riotgames.com/lol/static-data/v3/champions?dataById=false'
+        self.fake_name = 'BillyBob'
+        self.endpoint = Endpoint()
+        self.headers = {
+            'Connection': 'keep-alive', 
+            'transfer-encoding': 'chunked', 
+            'X-Method-Rate-Limit': '270:60', 
+            'Vary': 'Accept-Encoding', 
+            'Access-Control-Allow-Headers': 'Content-Type', 
+            'X-NewRelic-App-Data': 'PxQFWFFSDwQTV1hXBggDV1QTGhE1AwE2QgNWEVlbQFtcC2VOchRAFgtba04hJmweXAEABUJUGhBXHFFWFicPDnwHWQVNXWRdQAxNCF4PQCQLRGQUCw5XXVUWQ04HHwdKVB8HAlteU1IIVhRPCRQWC1EHWlEGUVJQBw8BVANQWhEcAgAORFRq', 
+            'X-App-Rate-Limit': '100:120,20:1', 
+            'Access-Control-Allow-Origin': '*', 
+            'Date': 'Wed, 20 Sep 2017 02:13:18 GMT', 
+            'Content-Type': 'application/json;charset=utf-8', 
+            'Access-Control-Allow-Methods': 'GET, POST, DELETE, PUT', 
+            'X-Method-Rate-Limit-Count': '1:60', 
+            'Content-Encoding': 'gzip', 
+            'X-App-Rate-Limit-Count': '1:120,1:1'
+        }
+
         
     def test_identifyEndpoint(self):
-        e = Endpoint.identifyEndpoint(self.summoner_url_template.format(name='BillyBob'))
+        e = Endpoint.identifyEndpoint(self.summoner_url_template.format(name=self.fake_name))
         self.assertTrue(e == 'lol/summoner/v3/summoners/by-name')
         e = Endpoint.identifyEndpoint(self.match_url_template.format(matchid='3'))
         self.assertTrue(e == 'lol/match/v3/matches')
@@ -104,6 +125,74 @@ class TestEndpoint(unittest.TestCase):
         self.assertTrue(e == 'lol/match/v3/matches')
         e = Endpoint.identifyEndpoint(self.static_url)
         self.assertTrue(e == 'lol/static-data/v3/champions')
+        
+    def test_limitsDefined(self):
+        endpoint = Endpoint()
+        self.assertFalse(endpoint.limitsDefined)
+        endpoint.setLimit(self.headers)
+        self.assertTrue(endpoint.limitsDefined)
+        endpoint.limits = {}
+        self.assertFalse(endpoint.limitsDefined)
+        
+    def test_setLimit(self):
+        self.endpoint.setLimit(self.headers)
+        self.assertEqual(self.endpoint.limits['60'].limit, 270)
+        new_headers = copy.copy(self.headers)
+        new_headers['X-Method-Rate-Limit'] = '10:120,30:300'
+        self.endpoint.setLimit(new_headers)
+        self.assertFalse('60' in self.endpoint.limits)
+        self.assertEqual(self.endpoint.limits['120'].limit, 10)
+        self.assertEqual(self.endpoint.limits['300'].limit, 30)
+        
+    def test_setCount(self):
+        self.endpoint.setLimit(self.headers)
+        self.endpoint.setCount(self.headers)
+        self.assertEqual(self.endpoint.limits['60'].used, 1)
+        new_headers = copy.copy(self.headers)
+        new_headers['X-Method-Rate-Limit-Count'] = '4:60'
+        self.endpoint.setCount(new_headers)
+        self.assertEqual(self.endpoint.limits['60'].used, 4)
+        
+    def test_addData(self):
+        self.assertRaises(Exception, self.endpoint.addData, ({'other':'thing'},))
+        self.endpoint.addData({'url':self.match_url_template.format(matchid=1)})
+        self.assertEqual(self.endpoint.count, 1)
+        self.assertRaises(Exception, self.endpoint.addData, ({'other':'thing'},))
+        self.assertRaises(Exception, self.endpoint.addData, ({'url':self.summoner_url_template.format(name=self.fake_name)},))
+        self.endpoint.addData({'url':self.match_url_template.format(matchid=2)})
+        self.assertEqual(self.endpoint.count, 2)
+        
+    def test_available(self):
+        self.assertFalse(self.endpoint.available())
+        for i in range(1,4):
+            self.endpoint.addData({'url':self.match_url_template.format(matchid=i)})
+        self.assertTrue(self.endpoint.available())
+        self.assertTrue(self.endpoint.available())
+        self.endpoint.get()
+        self.assertTrue(self.endpoint.available()) # No limit set, still available
+        self.endpoint.setLimit(self.headers)
+        self.endpoint.get()
+        self.assertTrue(self.endpoint.available())
+        self.endpoint.get()
+        self.assertFalse(self.endpoint.available())
+        self.assertFalse(self.endpoint.available())
+        
+        
+    def test_getUsage(self):
+        self.assertEqual(self.endpoint.getUsage(), 'No limits defined')
+        self.endpoint.setLimit(self.headers)
+        count, seconds = self.headers['X-Method-Rate-Limit'].split(':')
+        self.assertEqual(self.endpoint.getUsage(), '0:%s'%count)
+        self.endpoint.addData({'url':self.match_url_template.format(matchid=1)})
+        self.endpoint.get()
+        self.assertEqual(self.endpoint.getUsage(), '1:%s'%count)
+        new_headers = copy.copy(self.headers)
+        new_headers['X-Method-Rate-Limit-Count'] = '0:%s'%seconds
+        self.endpoint.setCount(new_headers)
+        self.assertEqual(self.endpoint.getUsage(), '0:%s'%count)
+        
+    def test_getResetTime(self):
+        self.assertEqual(round(self.endpoint.getResetTime(), 3), round(time.time(), 3))
         
 # Platform
 # RateLimiter
