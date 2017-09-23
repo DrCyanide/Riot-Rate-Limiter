@@ -190,12 +190,15 @@ class TestEndpoint(unittest.TestCase):
         
     def test_getUsage(self):
         self.assertEqual(self.endpoint.getUsage(), 'No limits defined')
+        
         self.endpoint.setLimit(self.headers)
         count, seconds = self.headers['X-Method-Rate-Limit'].split(':')
         self.assertEqual(self.endpoint.getUsage(), '0:%s'%count)
+        
         self.endpoint.addData(self.default_data)
         self.endpoint.get()
         self.assertEqual(self.endpoint.getUsage(), '1:%s'%count)
+        
         new_headers = copy.copy(self.headers)
         new_headers['X-Method-Rate-Limit-Count'] = '0:%s'%seconds
         self.endpoint.setCount(new_headers)
@@ -217,9 +220,44 @@ class TestEndpoint(unittest.TestCase):
         self.assertEqual(rtime(self.endpoint.limits[seconds].start), rtime())
         self.assertEqual(rtime(self.endpoint.getResetTime()), rtime(time.time() + int(seconds)))
         
+    def test_count(self):
+        self.assertEqual(self.endpoint.count, 0)
+        
+        self.endpoint.addData(self.default_data)
+        self.assertEqual(self.endpoint.count, 1)
+        
+        self.endpoint.addData(self.default_data)     
+        self.endpoint.addData(self.default_data)
+        self.endpoint.addData(self.default_data)
+        self.assertEqual(self.endpoint.count, 4)
+        
+        self.endpoint.get()
+        self.assertEqual(self.endpoint.count, 3)
         
         
-# Platform
+    def test_timeNextAvailable(self):
+        self.assertEqual(rtime(self.endpoint.timeNextAvailable()), rtime(self.endpoint.getResetTime()))
+        
+        self.endpoint.addData(self.default_data)
+        self.assertEqual(rtime(self.endpoint.timeNextAvailable()), rtime())
+        self.assertEqual(rtime(self.endpoint.timeNextAvailable()), rtime(self.endpoint.getResetTime()))
+
+        self.endpoint.addData(self.default_data)
+        delayTime = time.time() + 5
+        self.endpoint.handleDelay(delayTime)
+        self.assertEqual(rtime(self.endpoint.timeNextAvailable()), rtime(delayTime))
+        
+    
+    def test_limitsDefined(self):
+        self.assertFalse(self.endpoint.limitsDefined)
+        self.endpoint.setLimit(self.headers)
+        self.assertTrue(self.endpoint.limitsDefined)
+        
+    
+class TestPlatform(unittest.TestCase):
+    def setUp(self):
+        pass
+      
 # RateLimiter
 
 if __name__ == '__main__':

@@ -8,7 +8,7 @@ class Endpoint():
     def __init__(self, name='', first_request=None):
         self.name = name
         #self.url_queue = Queue()
-        self.url_deque = deque()
+        self.data_deque = deque()
         #self.lock = Lock()
         self.limits = {}
         
@@ -80,20 +80,6 @@ class Endpoint():
         except Exception as e:
             print('Endpoint - setCount: %s'%e)
                 
-    def addURL(self, url, atFront=False):
-        # TODO: Add a way to add to the front of the deque
-        if self.name == '':
-            self.name = Endpoint.identifyEndpoint(url)
-        else:
-            if self.name != Endpoint.identifyEndpoint(url):
-                raise Exception('Invalid URL, does not match endpoint')
-        #self.lock.acquire()
-        #self.url_queue.put(url)
-        if atFront:
-            self.url_deque.appendleft(url)
-        else:
-            self.url_deque.append(url)
-        #self.lock.release()
         
     def addData(self, data, atFront=False):
         if not 'url' in data:
@@ -108,9 +94,9 @@ class Endpoint():
         #self.lock.acquire()
         #self.url_queue.put(url)
         if atFront:
-            self.url_deque.appendleft(data)
+            self.data_deque.appendleft(data)
         else:
-            self.url_deque.append(data)
+            self.data_deque.append(data)
         #self.lock.release()
         
         
@@ -139,7 +125,7 @@ class Endpoint():
     @property
     def count(self):
         #return self.url_queue.qsize()
-        return len(self.url_deque)
+        return len(self.data_deque)
     
     def getResetTime(self):
         r_time = time.time()
@@ -174,8 +160,8 @@ class Endpoint():
             self.limits[limit].use()
             
         #url = self.url_queue.get()
-        url = self.url_deque.popleft()
+        data = self.data_deque.popleft()
         #self.lock.release()
-        return url
+        return data
          
         
