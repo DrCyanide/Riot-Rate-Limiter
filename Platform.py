@@ -32,23 +32,6 @@ class Platform():
         return False
         
         
-    def addURL(self, url):
-        endpoint_str = Endpoint.identifyEndpoint(url)
-        #self.lock.acquire()
-        if 'static' in endpoint_str:
-            if not endpoint_str in self.static_endpoints:
-                self.static_endpoints[endpoint_str] = Endpoint()
-            self.static_endpoints[endpoint_str].addURL(url)
-            self.static_count += 1
-        else:
-            if not endpoint_str in self.limited_endpoints:
-                self.limited_endpoints[endpoint_str] = Endpoint()
-                self.ordered_limited_endpoints.append(endpoint_str)
-            self.limited_endpoints[endpoint_str].addURL(url)
-            self.limited_count += 1
-        #self.lock.release()
-        
-        
     def addData(self, data, atFront=False):
         # data is a dict with url inside, but other info too
         endpoint_str = Endpoint.identifyEndpoint(data['url'])

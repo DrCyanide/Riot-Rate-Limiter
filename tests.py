@@ -9,9 +9,34 @@ from Platform import Platform
 
 config_path = 'config.json'
 server_connection = 'http://'
+time_precision = 2 # 3 normally works on my slow computer, but sometimes fails, so I settled on 2
+
+summoner_url_template = 'https://na1.api.riotgames.com/lol/summoner/v3/summoners/by-name/{name}'
+match_url_template = 'https://na1.api.riotgames.com/lol/match/v3/matches/{matchid}'
+static_champions_url = 'https://na1.api.riotgames.com/lol/static-data/v3/champions?dataById=false'
+static_summonerspells_url = 'https://na1.api.riotgames.com/lol/static-data/v3/summoner-spells?dataById=false'
+static_items_url = 'https://na1.api.riotgames.com/lol/static-data/v3/items'
+fake_name = 'BillyBob'
+
+headers = {
+            'Connection': 'keep-alive', 
+            'transfer-encoding': 'chunked', 
+            'X-Method-Rate-Limit': '270:60', 
+            'Vary': 'Accept-Encoding', 
+            'Access-Control-Allow-Headers': 'Content-Type', 
+            'X-NewRelic-App-Data': 'PxQFWFFSDwQTV1hXBggDV1QTGhE1AwE2QgNWEVlbQFtcC2VOchRAFgtba04hJmweXAEABUJUGhBXHFFWFicPDnwHWQVNXWRdQAxNCF4PQCQLRGQUCw5XXVUWQ04HHwdKVB8HAlteU1IIVhRPCRQWC1EHWlEGUVJQBw8BVANQWhEcAgAORFRq', 
+            'X-App-Rate-Limit': '100:120,20:1', 
+            'Access-Control-Allow-Origin': '*', 
+            'Date': 'Wed, 20 Sep 2017 02:13:18 GMT', 
+            'Content-Type': 'application/json;charset=utf-8', 
+            'Access-Control-Allow-Methods': 'GET, POST, DELETE, PUT', 
+            'X-Method-Rate-Limit-Count': '1:60', 
+            'Content-Encoding': 'gzip', 
+            'X-App-Rate-Limit-Count': '1:120,1:1'
+        }
 
 
-def rtime(timestamp=None, precision=2):
+def rtime(timestamp=None, precision=time_precision):
     # precision 3 normally works on my computer, but occassionally fails.
     # I'd rather not have occassional false failures
     if timestamp == None:
@@ -102,52 +127,33 @@ class TestLimit(unittest.TestCase):
         
 class TestEndpoint(unittest.TestCase):
     def setUp(self):
-        self.summoner_url_template = 'https://na1.api.riotgames.com/lol/summoner/v3/summoners/by-name/{name}'
-        self.match_url_template = 'https://na1.api.riotgames.com/lol/match/v3/matches/{matchid}'
-        self.static_url = 'https://na1.api.riotgames.com/lol/static-data/v3/champions?dataById=false'
-        self.fake_name = 'BillyBob'
         self.endpoint = Endpoint()
-        self.default_data = {'url':self.match_url_template.format(matchid=1)}
-        self.headers = {
-            'Connection': 'keep-alive', 
-            'transfer-encoding': 'chunked', 
-            'X-Method-Rate-Limit': '270:60', 
-            'Vary': 'Accept-Encoding', 
-            'Access-Control-Allow-Headers': 'Content-Type', 
-            'X-NewRelic-App-Data': 'PxQFWFFSDwQTV1hXBggDV1QTGhE1AwE2QgNWEVlbQFtcC2VOchRAFgtba04hJmweXAEABUJUGhBXHFFWFicPDnwHWQVNXWRdQAxNCF4PQCQLRGQUCw5XXVUWQ04HHwdKVB8HAlteU1IIVhRPCRQWC1EHWlEGUVJQBw8BVANQWhEcAgAORFRq', 
-            'X-App-Rate-Limit': '100:120,20:1', 
-            'Access-Control-Allow-Origin': '*', 
-            'Date': 'Wed, 20 Sep 2017 02:13:18 GMT', 
-            'Content-Type': 'application/json;charset=utf-8', 
-            'Access-Control-Allow-Methods': 'GET, POST, DELETE, PUT', 
-            'X-Method-Rate-Limit-Count': '1:60', 
-            'Content-Encoding': 'gzip', 
-            'X-App-Rate-Limit-Count': '1:120,1:1'
-        }
+        self.default_data = {'url':match_url_template.format(matchid=1)}
 
         
     def test_identifyEndpoint(self):
-        e = Endpoint.identifyEndpoint(self.summoner_url_template.format(name=self.fake_name))
+        e = Endpoint.identifyEndpoint(summoner_url_template.format(name=fake_name))
         self.assertTrue(e == 'lol/summoner/v3/summoners/by-name')
-        e = Endpoint.identifyEndpoint(self.match_url_template.format(matchid='3'))
+        e = Endpoint.identifyEndpoint(match_url_template.format(matchid='3'))
         self.assertTrue(e == 'lol/match/v3/matches')
-        e = Endpoint.identifyEndpoint(self.match_url_template.format(matchid='324'))
+        e = Endpoint.identifyEndpoint(match_url_template.format(matchid='324'))
         self.assertTrue(e == 'lol/match/v3/matches')
-        e = Endpoint.identifyEndpoint(self.static_url)
+        e = Endpoint.identifyEndpoint(static_champions_url)
         self.assertTrue(e == 'lol/static-data/v3/champions')
+        
         
     def test_limitsDefined(self):
         endpoint = Endpoint()
         self.assertFalse(endpoint.limitsDefined)
-        endpoint.setLimit(self.headers)
+        endpoint.setLimit(headers)
         self.assertTrue(endpoint.limitsDefined)
         endpoint.limits = {}
         self.assertFalse(endpoint.limitsDefined)
         
     def test_setLimit(self):
-        self.endpoint.setLimit(self.headers)
+        self.endpoint.setLimit(headers)
         self.assertEqual(self.endpoint.limits['60'].limit, 270)
-        new_headers = copy.copy(self.headers)
+        new_headers = copy.copy(headers)
         new_headers['X-Method-Rate-Limit'] = '10:120,30:300'
         self.endpoint.setLimit(new_headers)
         self.assertFalse('60' in self.endpoint.limits)
@@ -155,10 +161,10 @@ class TestEndpoint(unittest.TestCase):
         self.assertEqual(self.endpoint.limits['300'].limit, 30)
         
     def test_setCount(self):
-        self.endpoint.setLimit(self.headers)
-        self.endpoint.setCount(self.headers)
+        self.endpoint.setLimit(headers)
+        self.endpoint.setCount(headers)
         self.assertEqual(self.endpoint.limits['60'].used, 1)
-        new_headers = copy.copy(self.headers)
+        new_headers = copy.copy(headers)
         new_headers['X-Method-Rate-Limit-Count'] = '4:60'
         self.endpoint.setCount(new_headers)
         self.assertEqual(self.endpoint.limits['60'].used, 4)
@@ -168,19 +174,22 @@ class TestEndpoint(unittest.TestCase):
         self.endpoint.addData(self.default_data)
         self.assertEqual(self.endpoint.count, 1)
         self.assertRaises(Exception, self.endpoint.addData, ({'other':'thing'},))
-        self.assertRaises(Exception, self.endpoint.addData, ({'url':self.summoner_url_template.format(name=self.fake_name)},))
-        self.endpoint.addData({'url':self.match_url_template.format(matchid=2)})
+        self.assertRaises(Exception, self.endpoint.addData, ({'url':summoner_url_template.format(name=fake_name)},))
+        self.endpoint.addData({'url':match_url_template.format(matchid=2)})
         self.assertEqual(self.endpoint.count, 2)
+        
+        # TODO: Test adding data atFront
+        
         
     def test_available(self):
         self.assertFalse(self.endpoint.available())
         for i in range(1,4):
-            self.endpoint.addData({'url':self.match_url_template.format(matchid=i)})
+            self.endpoint.addData({'url':match_url_template.format(matchid=i)})
         self.assertTrue(self.endpoint.available())
         self.assertTrue(self.endpoint.available())
         self.endpoint.get()
         self.assertTrue(self.endpoint.available()) # No limit set, still available
-        self.endpoint.setLimit(self.headers)
+        self.endpoint.setLimit(headers)
         self.endpoint.get()
         self.assertTrue(self.endpoint.available())
         self.endpoint.get()
@@ -191,27 +200,27 @@ class TestEndpoint(unittest.TestCase):
     def test_getUsage(self):
         self.assertEqual(self.endpoint.getUsage(), 'No limits defined')
         
-        self.endpoint.setLimit(self.headers)
-        count, seconds = self.headers['X-Method-Rate-Limit'].split(':')
+        self.endpoint.setLimit(headers)
+        count, seconds = headers['X-Method-Rate-Limit'].split(':')
         self.assertEqual(self.endpoint.getUsage(), '0:%s'%count)
         
         self.endpoint.addData(self.default_data)
         self.endpoint.get()
         self.assertEqual(self.endpoint.getUsage(), '1:%s'%count)
         
-        new_headers = copy.copy(self.headers)
+        new_headers = copy.copy(headers)
         new_headers['X-Method-Rate-Limit-Count'] = '0:%s'%seconds
         self.endpoint.setCount(new_headers)
         self.assertEqual(self.endpoint.getUsage(), '0:%s'%count)
         
     def test_getResetTime(self):
         self.assertEqual(rtime(self.endpoint.getResetTime()), rtime())        
-        self.endpoint.setLimit(self.headers)
+        self.endpoint.setLimit(headers)
         self.endpoint.addData(self.default_data)
         self.assertEqual(rtime(self.endpoint.getResetTime()), rtime())
         
-        count, seconds = self.headers['X-Method-Rate-Limit'].split(':')
-        new_headers = copy.copy(self.headers)
+        count, seconds = headers['X-Method-Rate-Limit'].split(':')
+        new_headers = copy.copy(headers)
         new_headers['X-Method-Rate-Limit-Count'] = '%s:%s'%(count,seconds)
         self.endpoint.setLimit(new_headers)
         self.endpoint.setCount(new_headers)
@@ -250,12 +259,58 @@ class TestEndpoint(unittest.TestCase):
     
     def test_limitsDefined(self):
         self.assertFalse(self.endpoint.limitsDefined)
-        self.endpoint.setLimit(self.headers)
+        self.endpoint.setLimit(headers)
         self.assertTrue(self.endpoint.limitsDefined)
         
     
 class TestPlatform(unittest.TestCase):
     def setUp(self):
+        self.platform = Platform()
+        self.slug = 'na'
+        
+    def test_countAndHasURL(self):
+        self.assertEqual(self.platform.count, 0)
+        self.assertFalse(self.platform.hasURL())
+        
+        self.platform.addData({'url':match_url_template.format(matchid=1)})
+        self.assertEqual(self.platform.count, 1)
+        self.assertTrue(self.platform.hasURL())
+        
+        self.platform.addData({'url':summoner_url_template.format(name=fake_name)})
+        self.assertEqual(self.platform.count, 2)
+        self.assertTrue(self.platform.hasURL())
+                
+        self.platform.addData({'url':static_champions_url})
+        self.assertEqual(self.platform.count, 3)
+        self.assertTrue(self.platform.hasURL())
+        
+        self.platform.get()
+        self.assertEqual(self.platform.count, 2)
+        self.assertTrue(self.platform.hasURL())
+        
+        self.platform.get()
+        self.assertEqual(self.platform.count, 1)
+        self.assertTrue(self.platform.hasURL())
+        
+        self.platform.get()
+        self.assertEqual(self.platform.count, 0)
+        self.assertFalse(self.platform.hasURL())
+      
+      
+    def test_addData(self):
+        # Test adding static
+        s1 = {'url':static_champions_url}
+        s2 = {'url':static_summonerspells_url}
+        s3 = {'url':static_items_url}
+        self.platform.addData(s1)
+        self.platform.addData(s2)
+        self.platform.addData(s3)
+        self.assertEqual(self.platform.static_count, 3)
+        data, temp1, temp2 = self.platform.get()
+        self.assertEqual(s1, data)
+        # Test adding static atFront
+        # Test adding various platforms
+        # Test adding various platforms atFront
         pass
       
 # RateLimiter
