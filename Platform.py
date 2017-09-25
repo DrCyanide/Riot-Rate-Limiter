@@ -256,6 +256,8 @@ class Platform():
         endpoint_limit_needed = False
         platform_limit_needed = False
         
+        # Need to modify this, since it should always verify after every call
+        
         if not self.available():
             return obj, platform_limit_needed, endpoint_limit_needed
         
