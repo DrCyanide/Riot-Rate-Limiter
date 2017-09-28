@@ -48,18 +48,17 @@ class TestLimit(unittest.TestCase):
     def setUp(self):
         self.seconds = 0.1
         self.limit_count = 1
-        self.limit = Limit(seconds=self.seconds, limit=self.limit_count, used=0)
+        self.limit = Limit(seconds=self.seconds, cap=self.limit_count, used=0)
         
-    def test_defaultInit(self):
-        self.limit = Limit()
+    def test_init(self):
+        self.assertRaises(Exception, Limit)
         self.assertTrue(self.limit.ready())
-        self.assertTrue(self.limit.getResetTime() < time.time())
+        self.assertEqual(rtime(self.limit.nextReady()), rtime(time.time() + self.seconds))
         self.assertEqual(self.limit.used, 0)
         
     def test_use(self):
         self.limit.use()
-        #self.assertTrue(self.limit.getResetTime() < time.time() + self.seconds)
-        self.assertEqual(rtime(self.limit.getResetTime()), rtime(time.time() + self.seconds))
+        self.assertEqual(rtime(self.limit.nextReady()), rtime(time.time() + self.seconds))
         self.assertEqual(self.limit.used, 1)
         self.limit.use()
         self.limit.use()
@@ -68,62 +67,31 @@ class TestLimit(unittest.TestCase):
     def test_ready(self):
         start_time = time.time()
         self.seconds = 0.1
-        self.limit = Limit(seconds=self.seconds, limit=1, used=1)
+        self.limit = Limit(seconds=self.seconds, cap=1, used=1)
         self.assertFalse(self.limit.ready())
         self.assertEqual(self.limit.used, 1)
-        self.assertTrue(self.limit.getResetTime() > start_time)
-        #self.assertTrue(self.limit.getResetTime() < time.time() + self.seconds)
-        self.assertEqual(rtime(self.limit.getResetTime()), rtime(time.time() + self.seconds))
-        time.sleep(0.1)
+        self.assertTrue(self.limit.nextReady() > start_time)
+        self.assertEqual(rtime(self.limit.nextReady()), rtime(time.time() + self.seconds))
+        
+        time.sleep(self.seconds)
         self.assertTrue(self.limit.ready())
+        self.limit.use()
+        self.assertEqual(self.limit.used, 1)
+        
+    def test_verifyCount(self):
+        self.limit = Limit(self.seconds, 5, 0)
         self.assertEqual(self.limit.used, 0)
         self.limit.use()
         self.assertEqual(self.limit.used, 1)
-
-    def test_formatNumbers(self):
-        seconds, limit, used = self.limit._formatNumbers()
-        self.assertEqual(seconds, None)
-        self.assertEqual(limit, None)
-        self.assertEqual(used, None)
-        
-        seconds, limit, used = self.limit._formatNumbers(seconds='1', limit=12.0, used='5')
-        self.assertEqual(seconds, 1)
-        self.assertEqual(type(seconds), float)
-        self.assertEqual(limit, 12)
-        self.assertEqual(type(limit), int)
-        self.assertEqual(used, 5)
-        self.assertEqual(type(used), int)
-        
-    def test_setLimit(self):
-        self.assertEqual(self.limit.limit, self.limit_count)
-        self.limit.setLimit(seconds=10, limit=100)
-        self.assertEqual(self.limit.limit, 100)
-        self.assertEqual(self.limit.seconds, 10)
-        self.assertEqual(self.limit.used, 0)
-        
-        self.limit.use()
-        
-        self.limit.setLimit(seconds=1, limit=90)
-        self.assertEqual(self.limit.limit, 90)
-        self.assertEqual(self.limit.seconds, 1)
+        self.limit.verifyCount(1)
         self.assertEqual(self.limit.used, 1)
-        
-    def test_setUsed(self):
-        self.assertEqual(self.limit.used, 0)
-        self.assertTrue(self.limit.ready())
-        self.limit.setUsed(1)
-        self.assertEqual(self.limit.used, 1)
-        self.assertFalse(self.limit.ready())
-        
-    def test_getResetTime(self):
         self.limit.use()
-        self.assertTrue(self.limit.getResetTime() > time.time())
-        time.sleep(self.limit.seconds)
-        self.assertFalse(self.limit.getResetTime() > time.time()) # still gives when it reset, which was in the past
-        self.assertTrue(self.limit.ready())
-        self.limit.use()
-        self.assertTrue(self.limit.getResetTime() > time.time())
+        self.limit.verifyCount(1)
+        self.assertEqual(self.limit.used, 2)
+        self.limit.verifyCount(4)
+        self.assertEqual(self.limit.used, 4)
         
+        self.assertRaises(IndexError, self.limit.verifyCount, 6)
         
 class TestEndpoint(unittest.TestCase):
     def setUp(self):
