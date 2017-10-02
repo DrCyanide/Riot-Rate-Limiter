@@ -93,6 +93,9 @@ class TestLimit(unittest.TestCase):
         
         self.assertRaises(IndexError, self.limit.verifyCount, 6)
         
+        
+        
+        
 class TestEndpoint(unittest.TestCase):
     def setUp(self):
         self.endpoint = Endpoint()
@@ -113,29 +116,11 @@ class TestEndpoint(unittest.TestCase):
     def test_limitsDefined(self):
         endpoint = Endpoint()
         self.assertFalse(endpoint.limitsDefined)
-        endpoint.setLimit(headers)
+        endpoint.handleResponseHeaders(headers)
         self.assertTrue(endpoint.limitsDefined)
         endpoint.limits = {}
         self.assertFalse(endpoint.limitsDefined)
-        
-    def test_setLimit(self):
-        self.endpoint.setLimit(headers)
-        self.assertEqual(self.endpoint.limits['60'].limit, 270)
-        new_headers = copy.copy(headers)
-        new_headers['X-Method-Rate-Limit'] = '10:120,30:300'
-        self.endpoint.setLimit(new_headers)
-        self.assertFalse('60' in self.endpoint.limits)
-        self.assertEqual(self.endpoint.limits['120'].limit, 10)
-        self.assertEqual(self.endpoint.limits['300'].limit, 30)
-        
-    def test_setCount(self):
-        self.endpoint.setLimit(headers)
-        self.endpoint.setCount(headers)
-        self.assertEqual(self.endpoint.limits['60'].used, 1)
-        new_headers = copy.copy(headers)
-        new_headers['X-Method-Rate-Limit-Count'] = '4:60'
-        self.endpoint.setCount(new_headers)
-        self.assertEqual(self.endpoint.limits['60'].used, 4)
+    
         
     def test_addData(self):
         self.assertRaises(Exception, self.endpoint.addData, ({'other':'thing'},))
@@ -169,6 +154,7 @@ class TestEndpoint(unittest.TestCase):
         self.assertEqual(self.endpoint.get(), m2)
         self.assertEqual(self.endpoint.get(), self.default_data)
         
+        
     def test_available(self):
         self.assertFalse(self.endpoint.available())
         for i in range(1,4):
@@ -177,7 +163,7 @@ class TestEndpoint(unittest.TestCase):
         self.assertTrue(self.endpoint.available())
         self.endpoint.get()
         self.assertTrue(self.endpoint.available()) # No limit set, still available
-        self.endpoint.setLimit(headers)
+        self.endpoint.handleResponseHeaders(headers)
         self.endpoint.get()
         self.assertTrue(self.endpoint.available())
         self.endpoint.get()
@@ -188,7 +174,7 @@ class TestEndpoint(unittest.TestCase):
     def test_getUsage(self):
         self.assertEqual(self.endpoint.getUsage(), 'No limits defined')
         
-        self.endpoint.setLimit(headers)
+        self.endpoint.handleResponseHeaders(headers)
         count, seconds = headers['X-Method-Rate-Limit'].split(':')
         self.assertEqual(self.endpoint.getUsage(), '0:%s'%count)
         
@@ -198,24 +184,25 @@ class TestEndpoint(unittest.TestCase):
         
         new_headers = copy.copy(headers)
         new_headers['X-Method-Rate-Limit-Count'] = '0:%s'%seconds
-        self.endpoint.setCount(new_headers)
-        self.assertEqual(self.endpoint.getUsage(), '0:%s'%count)
+        self.endpoint.handleResponseHeaders(new_headers)
+        self.assertEqual(self.endpoint.getUsage(), '1:%s'%count) # Limit assumes 0 is old data
         
-    def test_getResetTime(self):
-        self.assertEqual(rtime(self.endpoint.getResetTime()), rtime())        
-        self.endpoint.setLimit(headers)
+        
+    def test_nextReady(self):
+        self.assertEqual(rtime(self.endpoint.nextReady()), rtime())        
+        self.endpoint.handleResponseHeaders(headers)
         self.endpoint.addData(self.default_data)
-        self.assertEqual(rtime(self.endpoint.getResetTime()), rtime())
+        self.assertEqual(rtime(self.endpoint.nextReady()), rtime())
         
         count, seconds = headers['X-Method-Rate-Limit'].split(':')
         new_headers = copy.copy(headers)
         new_headers['X-Method-Rate-Limit-Count'] = '%s:%s'%(count,seconds)
-        self.endpoint.setLimit(new_headers)
-        self.endpoint.setCount(new_headers)
+        self.endpoint.handleResponseHeaders(new_headers)
         self.assertTrue(len(self.endpoint.limits) > 0)
         self.assertFalse(self.endpoint.available())
         self.assertEqual(rtime(self.endpoint.limits[seconds].start), rtime())
-        self.assertEqual(rtime(self.endpoint.getResetTime()), rtime(time.time() + int(seconds)))
+        self.assertEqual(rtime(self.endpoint.nextReady()), rtime(time.time() + int(seconds)))
+        
         
     def test_count(self):
         self.assertEqual(self.endpoint.count, 0)
@@ -244,11 +231,8 @@ class TestEndpoint(unittest.TestCase):
         self.endpoint.handleDelay(delayTime)
         self.assertEqual(rtime(self.endpoint.timeNextAvailable()), rtime(delayTime))
         
-    
-    def test_limitsDefined(self):
-        self.assertFalse(self.endpoint.limitsDefined)
-        self.endpoint.setLimit(headers)
-        self.assertTrue(self.endpoint.limitsDefined)
+        
+        
         
     
 class TestPlatform(unittest.TestCase):
