@@ -176,16 +176,18 @@ class TestEndpoint(unittest.TestCase):
         
         self.endpoint.handleResponseHeaders(headers)
         count, seconds = headers['X-Method-Rate-Limit'].split(':')
-        self.assertEqual(self.endpoint.getUsage(), '0:%s'%count)
+        used, seconds = headers['X-Method-Rate-Limit-Count'].split(':')
+        used = int(used)
+        self.assertEqual(self.endpoint.getUsage(), '%s:%s'%(used,count))
         
         self.endpoint.addData(self.default_data)
         self.endpoint.get()
-        self.assertEqual(self.endpoint.getUsage(), '1:%s'%count)
+        self.assertEqual(self.endpoint.getUsage(), '%s:%s'%(used+1,count))
         
         new_headers = copy.copy(headers)
         new_headers['X-Method-Rate-Limit-Count'] = '0:%s'%seconds
         self.endpoint.handleResponseHeaders(new_headers)
-        self.assertEqual(self.endpoint.getUsage(), '1:%s'%count) # Limit assumes 0 is old data
+        self.assertEqual(self.endpoint.getUsage(), '%s:%s'%(used+1,count)) # Limit assumes 0 is old data
         
         
     def test_nextReady(self):
@@ -217,20 +219,6 @@ class TestEndpoint(unittest.TestCase):
         
         self.endpoint.get()
         self.assertEqual(self.endpoint.count, 3)
-        
-        
-    def test_timeNextAvailable(self):
-        self.assertEqual(rtime(self.endpoint.timeNextAvailable()), rtime(self.endpoint.getResetTime()))
-        
-        self.endpoint.addData(self.default_data)
-        self.assertEqual(rtime(self.endpoint.timeNextAvailable()), rtime())
-        self.assertEqual(rtime(self.endpoint.timeNextAvailable()), rtime(self.endpoint.getResetTime()))
-
-        self.endpoint.addData(self.default_data)
-        delayTime = time.time() + 5
-        self.endpoint.handleDelay(delayTime)
-        self.assertEqual(rtime(self.endpoint.timeNextAvailable()), rtime(delayTime))
-        
         
         
         

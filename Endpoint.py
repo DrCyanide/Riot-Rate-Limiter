@@ -100,9 +100,9 @@ class Endpoint():
                 for limit in limits:
                     used, seconds = limit.split(':')
                     if seconds in self.limits:
-                        self.limits[seconds].verifyCount(used)
+                        self.limits[seconds].verifyCount(int(used))
         except Exception as e:
-            print('Endpoint - setCount: %s'%e)
+            print('Endpoint - _verifyCounts: %s'%e)
                 
         
     def addData(self, data, atFront=False):
@@ -115,13 +115,12 @@ class Endpoint():
         else:
             if self.name != name:
                 raise Exception('Invalid URL, does not match endpoint')
-        #self.lock.acquire()
-        #self.url_queue.put(url)
+
         if atFront:
             self.data_deque.appendleft(data)
         else:
             self.data_deque.append(data)
-        #self.lock.release()
+
         
         
     def available(self):
@@ -148,7 +147,6 @@ class Endpoint():
     
     @property
     def count(self):
-        #return self.url_queue.qsize()
         return len(self.data_deque)
     
     
@@ -167,41 +165,17 @@ class Endpoint():
         return r_time
         
     
-    """def getResetTime(self):
-        r_time = time.time()
-        for limit in self.limits:
-            if not self.limits[limit].ready():
-                t = self.limits[limit].getResetTime()
-                if t > r_time:
-                    r_time = t
-        return r_time
-        
-    def timeNextAvailable(self):
-        if self.delay:
-            if time.time() < self.delay_end:
-                return self.delay_end
-            else:
-                self.delay = False
-        if self.available():
-            return time.time()
-        return self.getResetTime()
-    """
     def get(self):
-        #self.lock.acquire()
         if self.count == 0:
-            #self.lock.release()
             return None
             
         if not self.available():
-            #self.lock.release()
             return None
                 
         for limit in self.limits:
             self.limits[limit].use()
             
-        #url = self.url_queue.get()
         data = self.data_deque.popleft()
-        #self.lock.release()
         return data
          
         

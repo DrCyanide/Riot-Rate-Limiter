@@ -64,13 +64,14 @@ class Platform():
         return True
            
            
-    def handleHeaders(self, url, headers):
+    def handleResponseHeaders(self, url, headers):
         # Check that X-App-Rate-Limit didn't change
         if 'X-App-Rate-Limit' in headers:
             limits = headers['X-App-Rate-Limit'].split(',')
             intervals = [limit.split(':')[1] for limit in limits]
+            
             if sorted(intervals) != sorted(list(self.platform_limits.keys())):
-                print('Platform limit changed: %s'%limits)
+                # Platform limit changed
                 self.platform_limits = {}
                 self.setLimit(headers)
             
