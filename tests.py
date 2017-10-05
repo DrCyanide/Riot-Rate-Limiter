@@ -14,6 +14,7 @@ time_precision = 2 # 3 normally works on my slow computer, but sometimes fails, 
 summoner_url_template = 'https://na1.api.riotgames.com/lol/summoner/v3/summoners/by-name/{name}'
 match_url_template = 'https://na1.api.riotgames.com/lol/match/v3/matches/{matchid}'
 static_champions_url = 'https://na1.api.riotgames.com/lol/static-data/v3/champions?dataById=false'
+static_champion_url = 'https://na1.api.riotgames.com/lol/static-data/v3/champions/{id}'
 static_summonerspells_url = 'https://na1.api.riotgames.com/lol/static-data/v3/summoner-spells?dataById=false'
 static_items_url = 'https://na1.api.riotgames.com/lol/static-data/v3/items'
 fake_name = 'BillyBob'
@@ -261,28 +262,55 @@ class TestPlatform(unittest.TestCase):
         # platform rotates between endpoints to get from, making it less predictable
         # The important thing is that the endpoints get rotated through, prioritizing static
         
-        return
-        # Need to modify this part of the code
-        
-        # Test adding static
+        # Test adding a variety of static
         s1 = {'url':static_champions_url}
         s2 = {'url':static_summonerspells_url}
         s3 = {'url':static_items_url}
+        s = [s1,s2,s3]
+        
         self.platform.addData(s1)
         self.platform.addData(s2)
         self.platform.addData(s3)
         self.assertEqual(self.platform.static_count, 3)
-        data, temp1, temp2 = self.platform.get()
-        self.assertEqual(s1, data)
-        data, temp1, temp2 = self.platform.get()
-        self.assertEqual(s2, data)
-        data, temp1, temp2 = self.platform.get()
-        self.assertEqual(s3, data)
+        data = self.platform.get()
+        self.assertTrue(data in s)
+        data = self.platform.get()
+        self.assertTrue(data in s)
+        data = self.platform.get()
+        self.assertTrue(data in s)
+        self.assertRaises(Exception, self.platform.get)
+        
+        # Test adding static data in default order
+        c1 = {'url':static_champion_url.format(id=1)}
+        c2 = {'url':static_champion_url.format(id=2)}
+        c3 = {'url':static_champion_url.format(id=3)}
+        self.platform.addData(c1)
+        self.platform.addData(c2)
+        self.platform.addData(c3)
+        data = self.platform.get()
+        self.assertEqual(data, c1)
+        data = self.platform.get()
+        self.assertEqual(data, c2)
+        data = self.platform.get()
+        self.assertEqual(data, c3)
+        self.assertRaises(Exception, self.platform.get)
         
         # Test adding static atFront
-        # Test adding various platforms
-        # Test adding various platforms atFront
-        pass
+        self.platform.addData(c1, atFront=True)
+        self.platform.addData(c2, atFront=True)
+        self.platform.addData(c3, atFront=True)
+        self.assertEqual(self.platform.static_count, 3)
+        data = self.platform.get()
+        self.assertEqual(data, c3)
+        data = self.platform.get()
+        self.assertEqual(data, c2)
+        data = self.platform.get()
+        self.assertEqual(data, c1)
+        self.assertRaises(Exception, self.platform.get)
+        
+        # Test adding various limited endpoints
+        # Test adding various limited endpoints atFront
+        
       
 # RateLimiter
 

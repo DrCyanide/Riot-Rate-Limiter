@@ -59,7 +59,7 @@ class Endpoint():
             
     def _handleDelay(self, delay_end):
         limit_type = headers['X-Rate-Limit-Type'].lower()
-        retry_after = self.default_retry_after
+        retry_after = float(self.default_retry_after)
         if 'Retry-After' in headers:
             retry_after = float(headers['Retry-After'])
         
@@ -68,7 +68,7 @@ class Endpoint():
             # https://docs.python.org/3/library/datetime.html#strftime-strptime-behavior
             date_format = '%a, %d %b %Y  %H:%M:%S %Z' # Not certain on %d, might be unpadded
             response_time = datetime.datetime.strptime(headers['Date'], date_format)
-            response_time = response_time + datetime.timedelta(seconds=float(headers['Retry-After']))
+            response_time = response_time + datetime.timedelta(seconds=retry_after)
             self.delay_end = time.mktime(response_time.timetuple())
       
       
@@ -90,17 +90,18 @@ class Endpoint():
                 for seconds in old_limits:
                     self.limits.pop(seconds)
         except Exception as e:
-            print('Endpoint - setLimit: e'%e)
+            print('Endpoint - verifyLimits: e'%e)
     
     
     def _verifyCounts(self, headers):
         try:
-            if 'X-Method-Rate-Limit-Count' in headers:
-                limits = headers['X-Method-Rate-Limit-Count'].split(',')
-                for limit in limits:
-                    used, seconds = limit.split(':')
-                    if seconds in self.limits:
-                        self.limits[seconds].verifyCount(int(used))
+            if not 'X-Method-Rate-Limit-Count' in headers:
+                return
+            h_limits = headers['X-Method-Rate-Limit-Count'].split(',')
+            for limit in h_limits:
+                used, seconds = limit.split(':')
+                if seconds in self.limits:
+                    self.limits[seconds].verifyCount(int(used))
         except Exception as e:
             print('Endpoint - _verifyCounts: %s'%e)
                 

@@ -65,31 +65,30 @@ class Platform():
            
            
     def handleResponseHeaders(self, url, headers):
+        # Handle X-Rate-Limit-Type
+        if 'X-Rate-Limit-Type' in headers:
+            limit_type = headers['X-Rate-Limit-Type'].lower()
+            if limit_type == 'application':
+                self._handleDelay(headers)
+            
         # Check that X-App-Rate-Limit didn't change
         if 'X-App-Rate-Limit' in headers:
-            limits = headers['X-App-Rate-Limit'].split(',')
-            intervals = [limit.split(':')[1] for limit in limits]
+            self._verifyLimits(headers)
             
-            if sorted(intervals) != sorted(list(self.platform_limits.keys())):
-                # Platform limit changed
-                self.platform_limits = {}
-                self.setLimit(headers)
             
         # Check that X-App-Rate-Limit-Count is still OK
         if 'X-App-Rate-Limit-Count' in headers:
-            counts = headers['X-App-Rate-Limit-Count'].split(',')
-            intervals = [limit.split(':')[1] for limit in limits]
-            counts = [limit.split(':')[0] for limit in limits]
-            countLookup = dict(zip(intervals, counts))
-            for seconds in self.platform_limits:
-                if countLookup[seconds] > self.platform_limits[seconds].used:
-                    self.setCount(headers)
-                    break
-           
-        # Check for errors?
+            self._verifyCounts(headers)
+        
+        # Pass to the endpoint
+        endpoint_str = Endpoint.identifyEndpoint(url)
+        if 'static' in endpoint_str:
+            self.static_endpoints[endpoint_str].handleResponseHeaders(headers)
+        else:
+            self.limited_endpoints[endpoint_str].handleResponseHeaders(headers)
         
            
-    def handleDelay(self, url, headers):
+    def _handleDelay(self, headers):
         # Identify type of delay
         limit_type = headers['X-Rate-Limit-Type']
         delay_end = time.time() + 1 # default to 1 second in the future
@@ -100,75 +99,44 @@ class Platform():
             response_time = response_time + datetime.timedelta(seconds=float(headers['Retry-After']))
             delay_end = time.mktime(response_time.timetuple())
         
-        if limit_type == None or limit_type.lower() == 'service': # Assume on method level
-            limit_type = 'method' # How's that for code reuse!
-            
         if limit_type.lower() == 'application': # Set delay in the Platform
             self.delay = True
             self.delay_end = delay_end
-            return
-           
-        if limit_type.lower() == 'method': # Set delay in the Endpoint
-            endpoint_str = Endpoint.identifyEndpoint(url)
-            if 'static' in endpoint_str:
-                self.static_endpoints[endpoint_str].handleDelay(delay_end)
-            else:
-                self.limited_endpoints[endpoint_str].handleDelay(delay_end)
-            
+            return   
             
         
-    def setLimit(self, headers):
-        # Set self.limits
-        #self.lock.acquire()
-        limits = headers['X-App-Rate-Limit'].split(',')
-        for limit in limits:
-            requests, seconds = limit.split(':')
-            if seconds in self.platform_limits:
-                self.platform_limits[seconds].setLimit(seconds, requests)
-            else:
-                self.platform_limits[seconds] = Limit(seconds, requests)
-        #self.lock.release()
+    def _verifyLimits(self, headers):
+        try:
+            h_limits = headers['X-App-Rate-Limit'].split(',')
+            old_limits = set(self.platform_limits.keys())
+            for limit in h_limits:
+                requests, seconds = limit.split(':')
+                if seconds in self.platform_limits:
+                    if self.platform_limits[seconds].cap != requests:
+                        old_limits.remove(seconds)
+                else:
+                    self.platform_limits[seconds] = Limit(seconds, requests)
+            
+            for seconds in old_limits:
+                self.platform_limits.pop(seconds)
+        except Exception as e:
+            print('Platform - verifyLimits: %s'%e)
+            
        
-    def setCount(self, headers):
-        #self.lock.acquire()
-        limits = headers['X-App-Rate-Limit-Count'].split(',')
-        for limit in limits:
-            used, seconds = limit.split(':')
-            if seconds in self.platform_limits:
-                self.platform_limits[seconds].setUsed(used)
-        #self.lock.release()
-    
-    def setLimitAndCount(self, headers):
-        self.setLimit(headers)
-        self.setCount(headers)
+    def _verifyCounts(self, headers):
+        try:
+            if not 'X-App-Rate-Limit-Count' in headers:
+                return
+            h_limits = headers['X-App-Rate-Limit-Count'].split(',')
+            for limit in h_limits:
+                used, seconds = limit.split(':')
+                if seconds in self.platform_limits:
+                    self.platform_limits[seconds].verifyCount(int(used))
+        except Exception as e:
+            print('Platform - verifyLimits: %s'%e)
                 
-                
-    def setEndpointLimit(self, url, headers):
-        #self.lock.acquire()
-        endpoint_str = Endpoint.identifyEndpoint(url)
-        if 'static' in endpoint_str:
-            if not self.static_endpoints[endpoint_str].limitsDefined:
-                self.static_endpoints[endpoint_str].setLimit(headers)
-        else:
-            if not self.limited_endpoints[endpoint_str].limitsDefined:
-                self.limited_endpoints[endpoint_str].setLimit(headers)
-        #self.lock.release()
     
-    def setEndpointCount(self, url, headers):
-        #self.lock.acquire()
-        endpoint_str = Endpoint.identifyEndpoint(url)
-        if 'static' in endpoint_str:
-            self.static_endpoints[endpoint_str].setCount(headers)
-        else:
-            self.limited_endpoints[endpoint_str].setCount(headers)
-        #self.lock.release()
-        
-    def setEndpointLimitAndCount(self, url, headers):
-        self.setEndpointLimit(url, headers)
-        self.setEndpointCount(url, headers)
-        
-        
-    def getResetTime(self):
+    """def getResetTime(self):
         r_time = time.time()
         for limit_str in self.platform_limits:
             if not self.platform_limits[limit_str].ready():
@@ -176,6 +144,9 @@ class Platform():
                 if t > r_time:
                     r_time = t
         return r_time
+    """
+    # nextReady() only matters if you've trying not to infinitely loop in the Ticker. 
+    # Why not have the ticker pause if all return not ready?
         
         
     def _soonestAvailable(self, endpoints):
@@ -241,6 +212,7 @@ class Platform():
             usage['limited'][endpoint_str] = self.limited_endpoints[endpoint_str].getUsage()
         return usage
         
+        
     def getSearchOrder(self):
         if self.last_limited_endpoint == '':
             return self.ordered_limited_endpoints
@@ -251,49 +223,35 @@ class Platform():
         search_order = self.ordered_limited_endpoints[i:] + self.ordered_limited_endpoints[:i]
         return search_order
         
+        
     def get(self):
-        # Return data/URL that's limit OK to be run, and whether or not it needs a limit/count return
-        obj = None
-        endpoint_limit_needed = False
-        platform_limit_needed = False
-        
-        # Need to modify this, since it should always verify after every call
-        
         if not self.available():
-            return obj, platform_limit_needed, endpoint_limit_needed
+            raise Exception('Platform %s not available'%self.slug)
         
-        #self.lock.acquire()
         try:
-            if len(self.platform_limits.keys()) == 0:
-                platform_limit_needed = True
-                
             if self.static_count > 0:
-                # Static data effects multiple other endpoints, so these always get priority
+                # Static data effects multiple other calls, so these always get priority
                 for endpoint_str in self.static_endpoints:
                     endpoint = self.static_endpoints[endpoint_str]
                     if endpoint.available() and endpoint.count > 0:
-                        obj = endpoint.get()
-                        endpoint_limit_needed = not endpoint.limitsDefined
                         self.static_count -= 1
-                        break
+                        return endpoint.get()
+                        
             elif self.limited_count > 0 and self.rateLimitOK():
-                # Actually need to rotate these
-                search_order = self.getSearchOrder()
+                search_order = self.getSearchOrder() # Used to rotate which gets pulled from
                 for endpoint_str in search_order:
                     endpoint = self.limited_endpoints[endpoint_str]
                     if endpoint.available() and endpoint.count > 0:
-                        obj = endpoint.get()
-                        endpoint_limit_needed = not endpoint.limitsDefined
                         self.last_limited_endpoint = endpoint.name
                         self.limited_count -= 1
-                        break
-                # Use the platform limit
-                for limit in self.platform_limits:
-                    self.platform_limits[limit].use()
+                        
+                        for seconds in self.platform_limits:
+                            self.platform_limits[seconds].use()
+                        
+                        return endpoint.get()
+                
         except Exception as e:
             print('Platform %s: Exception getting obj\n%s'%(self.slug, e))
-        #self.lock.release()
-        return obj, platform_limit_needed, endpoint_limit_needed
         
         
         
