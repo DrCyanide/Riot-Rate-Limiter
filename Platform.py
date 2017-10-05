@@ -52,11 +52,11 @@ class Platform():
         
     def rateLimitOK(self):
         # Whether the Platform is inside it's rate limit
-        now = time.time()
         for limit_str in self.platform_limits:
             if not self.platform_limits[limit_str].ready():
                 return False
         if self.delay:
+            now = time.time()
             if now < self.delay_end:
                 return False
             else:

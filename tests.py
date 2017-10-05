@@ -16,6 +16,7 @@ match_url_template = 'https://na1.api.riotgames.com/lol/match/v3/matches/{matchi
 static_champions_url = 'https://na1.api.riotgames.com/lol/static-data/v3/champions?dataById=false'
 static_champion_url = 'https://na1.api.riotgames.com/lol/static-data/v3/champions/{id}'
 static_summonerspells_url = 'https://na1.api.riotgames.com/lol/static-data/v3/summoner-spells?dataById=false'
+static_summonerspell_url = 'https://na1.api.riotgames.com/lol/static-data/v3/summoner-spells/{id}'
 static_items_url = 'https://na1.api.riotgames.com/lol/static-data/v3/items'
 fake_name = 'BillyBob'
 
@@ -226,8 +227,9 @@ class TestEndpoint(unittest.TestCase):
     
 class TestPlatform(unittest.TestCase):
     def setUp(self):
-        self.platform = Platform()
         self.slug = 'na'
+        self.platform = Platform(self.slug)
+        
         
     def test_countAndHasURL(self):
         self.assertEqual(self.platform.count, 0)
@@ -258,58 +260,103 @@ class TestPlatform(unittest.TestCase):
         self.assertFalse(self.platform.hasURL())
       
       
-    def test_addData(self):
-        # platform rotates between endpoints to get from, making it less predictable
-        # The important thing is that the endpoints get rotated through, prioritizing static
+    def test_rateLimitOK(self):
+        self.assertTrue(self.platform.rateLimitOK())
+        # TODO: Add more conditions
         
-        # Test adding a variety of static
+      
+    def test_addData_static_random(self):
         s1 = {'url':static_champions_url}
         s2 = {'url':static_summonerspells_url}
         s3 = {'url':static_items_url}
         s = [s1,s2,s3]
-        
         self.platform.addData(s1)
         self.platform.addData(s2)
         self.platform.addData(s3)
         self.assertEqual(self.platform.static_count, 3)
-        data = self.platform.get()
-        self.assertTrue(data in s)
-        data = self.platform.get()
-        self.assertTrue(data in s)
-        data = self.platform.get()
-        self.assertTrue(data in s)
+        self.assertTrue(self.platform.get() in s)
+        self.assertTrue(self.platform.get() in s)
+        self.assertTrue(self.platform.get() in s)
         self.assertRaises(Exception, self.platform.get)
         
-        # Test adding static data in default order
+        
+    def test_addData_static_sorted(self):
         c1 = {'url':static_champion_url.format(id=1)}
         c2 = {'url':static_champion_url.format(id=2)}
         c3 = {'url':static_champion_url.format(id=3)}
         self.platform.addData(c1)
         self.platform.addData(c2)
         self.platform.addData(c3)
-        data = self.platform.get()
-        self.assertEqual(data, c1)
-        data = self.platform.get()
-        self.assertEqual(data, c2)
-        data = self.platform.get()
-        self.assertEqual(data, c3)
+        self.assertEqual(self.platform.static_count, 3)
+        self.assertEqual(self.platform.get(), c1)
+        self.assertEqual(self.platform.get(), c2)
+        self.assertEqual(self.platform.get(), c3)
         self.assertRaises(Exception, self.platform.get)
         
-        # Test adding static atFront
+        
+    def test_addData_static_sorted_atFront(self):
+        c1 = {'url':static_champion_url.format(id=1)}
+        c2 = {'url':static_champion_url.format(id=2)}
+        c3 = {'url':static_champion_url.format(id=3)}
         self.platform.addData(c1, atFront=True)
         self.platform.addData(c2, atFront=True)
         self.platform.addData(c3, atFront=True)
         self.assertEqual(self.platform.static_count, 3)
-        data = self.platform.get()
-        self.assertEqual(data, c3)
-        data = self.platform.get()
-        self.assertEqual(data, c2)
-        data = self.platform.get()
-        self.assertEqual(data, c1)
+        self.assertEqual(self.platform.get(), c3)
+        self.assertEqual(self.platform.get(), c2)
+        self.assertEqual(self.platform.get(), c1)
         self.assertRaises(Exception, self.platform.get)
         
-        # Test adding various limited endpoints
-        # Test adding various limited endpoints atFront
+    
+    def test_addData_limited_alternate(self):
+        m1 = {'url':match_url_template.format(matchid=1)}
+        m2 = {'url':match_url_template.format(matchid=2)}
+        m3 = {'url':match_url_template.format(matchid=3)}
+        s1 = {'url':summoner_url_template.format(name=1)}
+        s2 = {'url':summoner_url_template.format(name=2)}
+        s3 = {'url':summoner_url_template.format(name=3)}
+        self.platform.addData(m1)
+        self.platform.addData(m2)
+        self.platform.addData(m3)
+        self.platform.addData(s1)
+        self.platform.addData(s2)
+        self.platform.addData(s3)
+        self.assertEqual(self.platform.limited_count, 6)
+        self.assertEqual(self.platform.get(), m1)
+        self.assertEqual(self.platform.get(), s1)
+        self.assertEqual(self.platform.get(), m2)
+        self.assertEqual(self.platform.get(), s2)
+        self.assertEqual(self.platform.get(), m3)
+        self.assertEqual(self.platform.get(), s3)
+        self.assertRaises(Exception, self.platform.get)
+        
+    
+    def test_addData_limited_sorted(self):
+        m1 = {'url':match_url_template.format(matchid=1)}
+        m2 = {'url':match_url_template.format(matchid=2)}
+        m3 = {'url':match_url_template.format(matchid=3)}
+        self.platform.addData(m1)
+        self.platform.addData(m2)
+        self.platform.addData(m3)
+        self.assertEqual(self.platform.limited_count, 3)
+        self.assertEqual(self.platform.get(), m1)
+        self.assertEqual(self.platform.get(), m2)
+        self.assertEqual(self.platform.get(), m3)
+        self.assertRaises(Exception, self.platform.get)
+        
+        
+    def test_addData_limited_sorted_atFront(self):
+        m1 = {'url':match_url_template.format(matchid=1)}
+        m2 = {'url':match_url_template.format(matchid=2)}
+        m3 = {'url':match_url_template.format(matchid=3)}
+        self.platform.addData(m1, atFront=True)
+        self.platform.addData(m2, atFront=True)
+        self.platform.addData(m3, atFront=True)
+        self.assertEqual(self.platform.limited_count, 3)
+        self.assertEqual(self.platform.get(), m3)
+        self.assertEqual(self.platform.get(), m2)
+        self.assertEqual(self.platform.get(), m1)
+        self.assertRaises(Exception, self.platform.get)
         
       
 # RateLimiter
