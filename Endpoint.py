@@ -1,8 +1,10 @@
 import time
 from collections import deque
 from Limit import Limit
+import datetime
 
-class Endpoint():
+
+class Endpoint:
     def __init__(self, name='', first_request=None):
         self.name = name
         self.data_deque = deque()
@@ -13,51 +15,45 @@ class Endpoint():
         
         self.default_retry_after = 1
         
-        if first_request == None:
+        if first_request is None:
             self.first_request = time.time()
         else:
             self.first_request = first_request
-        
+
     @classmethod
-    def identifyEndpoint(cls, url):
+    def identify_endpoint(cls, url):
         if '?' in url: # Remove the query string
             url = url[:url.find('?')]
         url = url.lower()
         split_url = url.split('/')
-        endpoint = ''
         try:
             split_url = split_url[3:] # remove region
             if 'by-name' in split_url: 
-                endpoint = '/'.join(split_url[:-1]) # Ignore the player name itself
+                return '/'.join(split_url[:-1]) # Ignore the player name itself
             else:
                 non_numeric = []
                 for segment in split_url:
                     if not segment.isnumeric():
                         non_numeric.append(segment)
-                endpoint = '/'.join(non_numeric)
+                return '/'.join(non_numeric)
         except:
-            endpoint = 'BadEndpoint'
-        return endpoint
+            return 'BadEndpoint'
       
     @property
-    def limitsDefined(self):
+    def limits_defined(self):
         if len(self.limits.keys()) > 0:
             return True
         return False
-            
-      
-    def handleResponseHeaders(self, headers):
+
+    def handle_response_headers(self, headers):
         if 'X-Rate-Limit-Type' in headers:
-            self._handleDelay(headers)
-            
+            self._handle_delay(headers)
         if 'X-Method-Rate-Limit' in headers: 
-            self._verifyLimits(headers)
-                
+            self._verify_limits(headers)
         if 'X-Method-Rate-Limit-Count' in headers: 
-            self._verifyCounts(headers)
-            
-            
-    def _handleDelay(self, delay_end):
+            self._verify_counts(headers)
+
+    def _handle_delay(self, headers):
         limit_type = headers['X-Rate-Limit-Type'].lower()
         retry_after = float(self.default_retry_after)
         if 'Retry-After' in headers:
@@ -70,9 +66,8 @@ class Endpoint():
             response_time = datetime.datetime.strptime(headers['Date'], date_format)
             response_time = response_time + datetime.timedelta(seconds=retry_after)
             self.delay_end = time.mktime(response_time.timetuple())
-      
-      
-    def _verifyLimits(self, headers):
+
+    def _verify_limits(self, headers):
         try:
             if 'X-Method-Rate-Limit' in headers:
                 h_limits = headers['X-Method-Rate-Limit'].split(',')
@@ -91,9 +86,8 @@ class Endpoint():
                     self.limits.pop(seconds)
         except Exception as e:
             print('Endpoint - verifyLimits: e'%e)
-    
-    
-    def _verifyCounts(self, headers):
+
+    def _verify_counts(self, headers):
         try:
             if not 'X-Method-Rate-Limit-Count' in headers:
                 return
@@ -101,15 +95,14 @@ class Endpoint():
             for limit in h_limits:
                 used, seconds = limit.split(':')
                 if seconds in self.limits:
-                    self.limits[seconds].verifyCount(int(used))
+                    self.limits[seconds].verify_count(int(used))
         except Exception as e:
             print('Endpoint - _verifyCounts: %s'%e)
-                
-        
-    def addData(self, data, atFront=False):
+
+    def add_data(self, data, atFront=False):
         if not 'url' in data:
             raise Exception('Invalid URL, required for addData')
-        name = Endpoint.identifyEndpoint(data['url'])
+        name = Endpoint.identify_endpoint(data['url'])
             
         if self.name == '':
             self.name = name
@@ -122,8 +115,6 @@ class Endpoint():
         else:
             self.data_deque.append(data)
 
-        
-        
     def available(self):
         if self.count == 0:
             return False
@@ -136,8 +127,8 @@ class Endpoint():
             else:
                 self.delay = False
         return True
-        
-    def getUsage(self):
+
+    def get_usage(self):
         strs = []
         if len(self.limits.keys()) == 0:
             return 'No limits defined'
@@ -145,27 +136,25 @@ class Endpoint():
             s = '%s:%s'%(self.limits[limit_str].used, self.limits[limit_str].cap)
             strs.append(s)
         return ','.join(strs)
-    
+
     @property
     def count(self):
         return len(self.data_deque)
-    
-    
-    def nextReady(self):
+
+    def next_ready(self):
         if self.delay:
             if time.time() > self.delay_end:
                 self.delay = False
         r_time = time.time()
         for limit in self.limits:
             if not self.limits[limit].ready():
-                next = self.limits[limit].nextReady()
+                next = self.limits[limit].next_ready()
                 if next > r_time:
                     r_time = next
         if self.delay and r_time < self.delay_end:
             r_time = self.delay_end
         return r_time
-        
-    
+
     def get(self):
         if self.count == 0:
             return None
@@ -178,5 +167,3 @@ class Endpoint():
             
         data = self.data_deque.popleft()
         return data
-         
-        

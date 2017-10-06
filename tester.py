@@ -43,21 +43,21 @@ def testLimit():
     
 def testEndpoint():
     summoner_url = 'https://na1.api.riotgames.com/lol/summoner/v3/summoners/by-name/SomeSummonerName'
-    endpoint_str = Endpoint.identifyEndpoint(summoner_url)
+    endpoint_str = Endpoint.identify_endpoint(summoner_url)
     assert(endpoint_str == 'lol/summoner/v3/summoners/by-name')
     
     static_url = 'https://na1.api.riotgames.com/lol/static-data/v3/champions?locale=en_US&dataById=false'
-    endpoint_str = Endpoint.identifyEndpoint(static_url)
+    endpoint_str = Endpoint.identify_endpoint(static_url)
     assert(endpoint_str == 'lol/static-data/v3/champions')
     
     # There was an issue with id's 1 through 9 ending with a '/'
     match_example = 'https://na1.api.riotgames.com/lol/match/v3/matches/'
     for i in range(1, 50):
         url = '%s%s'%(match_example, i)
-        assert(Endpoint.identifyEndpoint(url) == 'lol/match/v3/matches')
+        assert(Endpoint.identify_endpoint(url) == 'lol/match/v3/matches')
     
     endpoint = Endpoint()
-    assert(endpoint.limitsDefined == False)
+    assert(endpoint.limits_defined == False)
     assert(endpoint.count == 0)
     assert(endpoint.available() == False) # No urls
     assert(endpoint.name == '')
@@ -78,10 +78,10 @@ def testEndpoint():
     assert(endpoint.available())
     
     headers = {'X-Method-Rate-Limit':'1:0.1,10:1', 'X-Method-Rate-Limit-Count':'0:0.1,9:1'}
-    assert(endpoint.limitsDefined == False)
+    assert(endpoint.limits_defined == False)
     endpoint.setLimit(headers)
     assert(endpoint.available())
-    assert(endpoint.limitsDefined)
+    assert(endpoint.limits_defined)
     assert(endpoint.get() == summoner_url)
     assert(endpoint.get() == None) # Exceeded limit, returned nothing
     assert(endpoint.getResetTime() > time.time() + 0.01)
@@ -104,10 +104,10 @@ def testEndpoint():
     
 def testPlatform():
     platform = Platform()
-    assert(platform.rateLimitOK())
-    assert(platform.hasURL() == False)
+    assert(platform.rate_limit_ok())
+    assert(platform.has_url() == False)
     assert(platform.available() == False) # no URLS
-    assert(platform.timeNextAvailable() == None)
+    assert(platform.time_next_available() == None)
     assert(platform.count == 0)
     assert(platform.get() == (None, True, False))
     
@@ -116,7 +116,7 @@ def testPlatform():
     assert(platform.count == 1)
     assert(platform.static_count == 0)
     assert(platform.limited_count == 1)
-    assert(platform.timeNextAvailable() < time.time())
+    assert(platform.time_next_available() < time.time())
     assert(platform.available())
     
     static_url = 'https://na1.api.riotgames.com/lol/static-data/v3/champions?locale=en_US&dataById=false'
@@ -124,7 +124,7 @@ def testPlatform():
     assert(platform.count == 2)
     assert(platform.static_count == 1)
     assert(platform.limited_count == 1)
-    assert(platform.timeNextAvailable() < time.time())
+    assert(platform.time_next_available() < time.time())
     assert(platform.available())
     
     # When two are present, static should be pulled first
@@ -156,20 +156,20 @@ def testPlatform():
                'X-App-Rate-Limit-Count':'0:0.1,39:1'}
     platform.setLimit(headers)
     platform.setCount(headers)
-    assert(platform.rateLimitOK())
+    assert(platform.rate_limit_ok())
     platform.addURL(summoner_url)
     platform.addURL(summoner_url)
     assert(platform.get() == (summoner_url, False, True))
-    assert(platform.rateLimitOK() == False)
+    assert(platform.rate_limit_ok() == False)
     assert(platform.get() == (None, False, False))
     
     platform = Platform()
     platform.addURL(summoner_url)
     platform.addURL(summoner_url)
     platform.setLimitAndCount(headers)
-    assert(platform.rateLimitOK())
+    assert(platform.rate_limit_ok())
     assert(platform.get() == (summoner_url, False, True))
-    assert(platform.rateLimitOK() == False)
+    assert(platform.rate_limit_ok() == False)
     platform.addURL(summoner_url)
     assert(platform.get() == (None, False, False))
 
@@ -321,7 +321,7 @@ def testScenario():
     print('Scenario tests pass')
     
 def grabWhenReady(platform):
-    next = platform.timeNextAvailable()
+    next = platform.time_next_available()
     if next == None:
         print('No next time available, no records!')
         return 

@@ -1,13 +1,9 @@
 import http.server
 import json
-import multiprocessing
 from multiprocessing import Lock
-from multiprocessing import Pool
 from multiprocessing import Process
-from multiprocessing.queues import Empty
 from multiprocessing.managers import SyncManager
 import time
-from collections import deque
 import urllib.request
 import urllib.error
 import traceback
@@ -154,7 +150,7 @@ def addData(data, platforms, atFront=False, max_attempts=3):
         
     platform_slug = identifyPlatform(data['url'])
     p = platforms[platform_slug]
-    p.addData(data, atFront)
+    p.add_data(data, atFront)
     platforms.update([(platform_slug,p)])
     
     return platforms, True
@@ -185,10 +181,10 @@ def ticker(running, platforms, ticker_condition, r_queue, r_condition):
             next_run = None
             for platform_slug in platforms.keys():
                 if platforms[platform_slug].available():
-                    next_run = platforms[platform_slug].timeNextAvailable()
+                    next_run = platforms[platform_slug].time_next_available()
                     break # at least one platform ready
                 else:
-                    next = platforms[platform_slug].timeNextAvailable()
+                    next = platforms[platform_slug].time_next_available()
                     if next_run == None or next < next_run:
                         next_run = next
                 
