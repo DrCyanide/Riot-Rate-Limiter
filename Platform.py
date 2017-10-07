@@ -75,9 +75,15 @@ class Platform():
         # Pass to the endpoint
         endpoint_str = Endpoint.identify_endpoint(url)
         if 'static' in endpoint_str:
-            self.static_endpoints[endpoint_str].handle_response_headers(headers)
+            if endpoint_str in self.static_endpoints:
+                self.static_endpoints[endpoint_str].handle_response_headers(headers)
+            else:
+                raise Exception('Invalid response URL: endpoint was not called')
         else:
-            self.limited_endpoints[endpoint_str].handle_response_headers(headers)
+            if endpoint_str in self.limited_endpoints:
+                self.limited_endpoints[endpoint_str].handle_response_headers(headers)
+            else:
+                raise Exception('Invalid response URL: endpoint was not called')
 
     def _handle_delay(self, headers):
         # Identify type of delay
@@ -95,7 +101,6 @@ class Platform():
             self.delay_end = delay_end
             return
 
-
     def _verify_limits(self, headers):
         try:
             h_limits = headers['X-App-Rate-Limit'].split(',')
@@ -112,7 +117,6 @@ class Platform():
                 self.platform_limits.pop(seconds)
         except Exception as e:
             print('Platform - verifyLimits: %s' % e)
-
 
     def _verify_counts(self, headers):
         try:
@@ -138,7 +142,6 @@ class Platform():
 
     # nextReady() only matters if you've trying not to infinitely loop in the Ticker.
     # Why not have the ticker pause if all return not ready?
-
 
     def _soonest_available(self, endpoints):
         soonest = None

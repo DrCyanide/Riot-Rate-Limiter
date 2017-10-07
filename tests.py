@@ -246,7 +246,15 @@ class TestPlatform(unittest.TestCase):
 
     def test_rateLimitOK(self):
         self.assertTrue(self.platform.rate_limit_ok())
-        # TODO: Add more conditions
+        self.platform.add_data({'url': match_url_template.format(matchid=1)})
+        self.platform.handle_response_headers(match_url_template.format(matchid=1), headers)
+        self.assertTrue(self.platform.rate_limit_ok())
+        # TODO: Add more tests
+
+    def test_handle_response_headers(self):
+        url = match_url_template.format(matchid=1)
+        self.assertRaises(Exception, self.platform.handle_response_headers, (url, headers))
+        # TODO: Add more tests
 
     def test_addData_static_random(self):
         s1 = {'url': static_champions_url}
