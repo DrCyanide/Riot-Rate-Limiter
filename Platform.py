@@ -108,8 +108,10 @@ class Platform():
             for limit in h_limits:
                 requests, seconds = limit.split(':')
                 if seconds in self.platform_limits:
+                    old_limits.remove(seconds)
                     if self.platform_limits[seconds].cap != requests:
-                        old_limits.remove(seconds)
+                        self.platform_limits[seconds] = Limit(seconds, requests)
+
                 else:
                     self.platform_limits[seconds] = Limit(seconds, requests)
 

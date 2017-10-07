@@ -245,16 +245,52 @@ class TestPlatform(unittest.TestCase):
         self.assertFalse(self.platform.has_url())
 
     def test_rateLimitOK(self):
+        url = match_url_template.format(matchid=1)
         self.assertTrue(self.platform.rate_limit_ok())
         self.platform.add_data({'url': match_url_template.format(matchid=1)})
-        self.platform.handle_response_headers(match_url_template.format(matchid=1), headers)
+        self.platform.handle_response_headers(url, headers)
         self.assertTrue(self.platform.rate_limit_ok())
+        new_headers = copy.copy(headers)
+        new_headers['X-App-Rate-Limit'] = "1:1"
+        new_headers['X-App-Rate-Limit-Count'] = "1:1"
+        new_headers['X-Method-Rate-Limit'] = "5:1"
+        new_headers['X-Method-Rate-Limit-Count'] = "1:1"
+        self.platform.handle_response_headers(url, new_headers)
+        self.assertFalse(self.platform.rate_limit_ok())
         # TODO: Add more tests
 
     def test_handle_response_headers(self):
         url = match_url_template.format(matchid=1)
+        endpoint_str = Endpoint.identify_endpoint(url)
         self.assertRaises(Exception, self.platform.handle_response_headers, (url, headers))
-        # TODO: Add more tests
+        self.platform.add_data({'url': url})
+        self.assertEqual(self.platform.platform_limits, {})
+        self.platform.handle_response_headers(url, headers)
+        self.assertEqual(len(self.platform.platform_limits), 2)
+        self.assertEqual(self.platform.platform_limits["1"].cap, 20)
+        self.assertEqual(self.platform.platform_limits["1"].seconds, 1)
+        self.assertEqual(self.platform.platform_limits["1"].used, 1)
+        self.assertEqual(self.platform.platform_limits["120"].cap, 100)
+        self.assertEqual(self.platform.platform_limits["120"].seconds, 120)
+        self.assertEqual(self.platform.platform_limits["120"].used, 1)
+        self.assertEqual(len(self.platform.limited_endpoints), 1)
+        self.assertEqual(self.platform.limited_endpoints[endpoint_str].limits["60"].cap, 270)
+        self.assertEqual(self.platform.limited_endpoints[endpoint_str].limits["60"].seconds, 60)
+        self.assertEqual(self.platform.limited_endpoints[endpoint_str].limits["60"].used, 1)
+        new_headers = copy.copy(headers)
+        new_headers['X-App-Rate-Limit'] = "1:1"
+        new_headers['X-App-Rate-Limit-Count'] = "1:1"
+        new_headers['X-Method-Rate-Limit'] = "5:1"
+        new_headers['X-Method-Rate-Limit-Count'] = "1:1"
+        self.platform.handle_response_headers(url, new_headers)
+        self.assertEqual(len(self.platform.platform_limits), 1)
+        self.assertEqual(self.platform.platform_limits["1"].cap, 1)
+        self.assertEqual(self.platform.platform_limits["1"].seconds, 1)
+        self.assertEqual(self.platform.platform_limits["1"].used, 1)
+        self.assertEqual(len(self.platform.limited_endpoints), 1)
+        self.assertEqual(self.platform.limited_endpoints[endpoint_str].limits["1"].cap, 5)
+        self.assertEqual(self.platform.limited_endpoints[endpoint_str].limits["1"].seconds, 1)
+        self.assertEqual(self.platform.limited_endpoints[endpoint_str].limits["1"].used, 1)
 
     def test_addData_static_random(self):
         s1 = {'url': static_champions_url}
