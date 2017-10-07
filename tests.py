@@ -150,12 +150,12 @@ class TestEndpoint(unittest.TestCase):
 
     def test_available(self):
         self.assertFalse(self.endpoint.available())
-        for i in range(1,4):
+        for i in range(1, 4):
             self.endpoint.add_data({'url': match_url_template.format(matchid=i)})
         self.assertTrue(self.endpoint.available())
         self.assertTrue(self.endpoint.available())
         self.endpoint.get()
-        self.assertTrue(self.endpoint.available()) # No limit set, still available
+        self.assertTrue(self.endpoint.available())  # No limit set, still available
         self.endpoint.handle_response_headers(headers)
         self.endpoint.get()
         self.assertTrue(self.endpoint.available())
@@ -177,9 +177,9 @@ class TestEndpoint(unittest.TestCase):
         self.assertEqual(self.endpoint.get_usage(), '%s:%s' % (used + 1, count))
         
         new_headers = copy.copy(headers)
-        new_headers['X-Method-Rate-Limit-Count'] = '0:%s'%seconds
+        new_headers['X-Method-Rate-Limit-Count'] = '0:%s' % seconds
         self.endpoint.handle_response_headers(new_headers)
-        self.assertEqual(self.endpoint.get_usage(), '%s:%s' % (used + 1, count)) # Limit assumes 0 is old data
+        self.assertEqual(self.endpoint.get_usage(), '%s:%s' % (used + 1, count))  # Limit assumes 0 is old data
 
     def test_nextReady(self):
         self.assertEqual(rtime(self.endpoint.next_ready()), rtime())
@@ -189,7 +189,7 @@ class TestEndpoint(unittest.TestCase):
         
         count, seconds = headers['X-Method-Rate-Limit'].split(':')
         new_headers = copy.copy(headers)
-        new_headers['X-Method-Rate-Limit-Count'] = '%s:%s'%(count,seconds)
+        new_headers['X-Method-Rate-Limit-Count'] = '%s:%s' % (count, seconds)
         self.endpoint.handle_response_headers(new_headers)
         self.assertTrue(len(self.endpoint.limits) > 0)
         self.assertFalse(self.endpoint.available())
@@ -251,13 +251,16 @@ class TestPlatform(unittest.TestCase):
         self.platform.handle_response_headers(url, headers)
         self.assertTrue(self.platform.rate_limit_ok())
         new_headers = copy.copy(headers)
-        new_headers['X-App-Rate-Limit'] = "1:1"
-        new_headers['X-App-Rate-Limit-Count'] = "1:1"
+        new_headers['X-App-Rate-Limit'] = "1:0.01"
+        new_headers['X-App-Rate-Limit-Count'] = "1:0.01"
         new_headers['X-Method-Rate-Limit'] = "5:1"
         new_headers['X-Method-Rate-Limit-Count'] = "1:1"
         self.platform.handle_response_headers(url, new_headers)
         self.assertFalse(self.platform.rate_limit_ok())
-        # TODO: Add more tests
+        time.sleep(0.01)
+        self.assertTrue(self.platform.rate_limit_ok())
+        self.platform.get()
+        self.assertFalse(self.platform.rate_limit_ok())
 
     def test_handle_response_headers(self):
         url = match_url_template.format(matchid=1)
@@ -296,7 +299,7 @@ class TestPlatform(unittest.TestCase):
         s1 = {'url': static_champions_url}
         s2 = {'url': static_summoner_spells_url}
         s3 = {'url': static_items_url}
-        s = [s1,s2,s3]
+        s = [s1, s2, s3]
         self.platform.add_data(s1)
         self.platform.add_data(s2)
         self.platform.add_data(s3)
