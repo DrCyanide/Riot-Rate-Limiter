@@ -4,6 +4,7 @@ import time
 from Limit import Limit
 from Endpoint import Endpoint
 from Platform import Platform
+import platform
 
 config_path = 'config.json'
 server_connection = 'http://'
@@ -26,13 +27,27 @@ headers = {
             'Access-Control-Allow-Headers': 'Content-Type',
             'X-App-Rate-Limit': '100:120,20:1', 
             'Access-Control-Allow-Origin': '*', 
-            'Date': 'Wed, 20 Sep 2017 02:13:18 GMT', 
+            'Date': 'Mon, 9 Oct 2017  05:30:25 GMT',
             'Content-Type': 'application/json;charset=utf-8', 
             'Access-Control-Allow-Methods': 'GET, POST, DELETE, PUT', 
             'X-Method-Rate-Limit-Count': '1:60', 
             'Content-Encoding': 'gzip', 
             'X-App-Rate-Limit-Count': '1:120,1:1'
         }
+
+
+def get_date_header():
+    # https://stackoverflow.com/a/2073189/1381157
+    windows_format = '%a, %#d %b %Y  %H:%M:%S %Z'
+    linux_format = '%a, %-d %b %Y  %H:%M:%S %Z'
+    if 'windows' in platform.system().lower():
+        date_format = windows_format
+    else:
+        date_format = linux_format
+
+    new_header = copy.copy(headers)
+    new_header['Date'] = time.strftime(date_format, time.gmtime())
+    return new_header
 
 
 def rtime(timestamp=None, precision=time_precision):
@@ -213,12 +228,12 @@ class TestEndpoint(unittest.TestCase):
     def test_handle_delay(self):
         self.endpoint.add_data(self.default_data)
         self.assertTrue(self.endpoint.available())
-        self.endpoint._handle_delay(headers)
+        self.endpoint._handle_delay(get_date_header())
         self.assertFalse(self.endpoint.available())
         time.sleep(self.endpoint.default_retry_after)
         self.assertTrue(self.endpoint.available())
 
-        new_headers = copy.copy(headers)
+        new_headers = get_date_header()
         new_headers['X-Rate-Limit-Type'] = "Method"
         new_headers['X-Retry-After'] = '0.1'
         self.endpoint.handle_response_headers(new_headers, 200)
@@ -429,7 +444,7 @@ class TestPlatform(unittest.TestCase):
         self.platform.add_data(limited_data_2)
         self.assertTrue(self.platform.available())
         self.platform.get()
-        new_headers = copy.copy(headers)
+        new_headers = get_date_header()
         new_headers['X-Method-Rate-Limit'] = '2:0.1'
         new_headers['X-Method-Rate-Limit-Count'] = '1:0.1'
         self.platform.handle_response_headers(match_url_template.format(matchid=100), new_headers, 429)

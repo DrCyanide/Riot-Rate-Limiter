@@ -6,6 +6,7 @@ def format_date(headers):
     # https://docs.python.org/3/library/datetime.html#strftime-strptime-behavior
     date_format = '%a, %d %b %Y  %H:%M:%S %Z'  # Not certain on %d, might be un-padded
     response_time = datetime.datetime.strptime(headers['Date'], date_format)
+    # strptime doesn't save the timezone, and the servers return in GMT (basically UTC)
     return response_time
 
 
