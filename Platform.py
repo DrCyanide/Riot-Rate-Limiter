@@ -60,7 +60,7 @@ class Platform:
 
     def handle_response_headers(self, url, headers, code=200):
         # Handle X-Rate-Limit-Type
-        if 'X-Rate-Limit-Type' in headers or (400 <= code < 500):
+        if 'X-Rate-Limit-Type' in headers or (400 <= code <= 500):
             self._handle_delay(headers)
 
         # Check that X-App-Rate-Limit didn't change
@@ -75,12 +75,12 @@ class Platform:
         endpoint_str = Endpoint.identify_endpoint(url)
         if 'static' in endpoint_str:
             if endpoint_str in self.static_endpoints:
-                self.static_endpoints[endpoint_str].handle_response_headers(headers)
+                self.static_endpoints[endpoint_str].handle_response_headers(headers, code)
             else:
                 raise Exception('Invalid response URL: endpoint was not called')
         else:
             if endpoint_str in self.limited_endpoints:
-                self.limited_endpoints[endpoint_str].handle_response_headers(headers)
+                self.limited_endpoints[endpoint_str].handle_response_headers(headers, code)
             else:
                 raise Exception('Invalid response URL: endpoint was not called')
 
@@ -93,6 +93,8 @@ class Platform:
 
     def _verify_limits(self, headers):
         try:
+            if 'X-App-Rate-Limit' not in headers:
+                return
             h_limits = HeaderTools.split_limits(headers, 'X-App-Rate-Limit')
             old_limits = set(self.platform_limits.keys())
             for requests, seconds in h_limits:
@@ -113,9 +115,8 @@ class Platform:
         try:
             if 'X-App-Rate-Limit-Count' not in headers:
                 return
-            h_limits = headers['X-App-Rate-Limit-Count'].split(',')
-            for limit in h_limits:
-                used, seconds = limit.split(':')
+            h_limits = HeaderTools.split_limits(headers, 'X-App-Rate-Limit-Count')
+            for used, seconds in h_limits:
                 if seconds in self.platform_limits:
                     self.platform_limits[seconds].verify_count(int(used))
         except Exception as e:

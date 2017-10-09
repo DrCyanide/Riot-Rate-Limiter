@@ -45,8 +45,8 @@ class Endpoint:
             return True
         return False
 
-    def handle_response_headers(self, headers):
-        if 'X-Rate-Limit-Type' in headers:
+    def handle_response_headers(self, headers, code=200):
+        if 'X-Rate-Limit-Type' in headers or (400 <= code <= 500):
             self._handle_delay(headers)
         if 'X-Method-Rate-Limit' in headers: 
             self._verify_limits(headers)
@@ -62,11 +62,9 @@ class Endpoint:
     def _verify_limits(self, headers):
         try:
             if 'X-Method-Rate-Limit' in headers:
-                h_limits = headers['X-Method-Rate-Limit'].split(',')
+                h_limits = HeaderTools.split_limits(headers, 'X-Method-Rate-Limit')
                 old_limits = set(self.limits.keys())
-                
-                for limit in h_limits:
-                    requests, seconds = limit.split(':')
+                for requests, seconds in h_limits:
                     if seconds in self.limits:
                         if self.limits[seconds].cap != requests:
                             old_limits.remove(seconds)
@@ -83,9 +81,8 @@ class Endpoint:
         try:
             if 'X-Method-Rate-Limit-Count' not in headers:
                 return
-            h_limits = headers['X-Method-Rate-Limit-Count'].split(',')
-            for limit in h_limits:
-                used, seconds = limit.split(':')
+            h_limits = HeaderTools.split_limits(headers, 'X-Method-Rate-Limit-Count')
+            for used, seconds in h_limits:
                 if seconds in self.limits:
                     self.limits[seconds].verify_count(int(used))
         except Exception as e:

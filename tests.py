@@ -98,7 +98,7 @@ class TestEndpoint(unittest.TestCase):
         self.endpoint = Endpoint()
         self.default_data = {'url': match_url_template.format(matchid=1)}
 
-    def test_identifyEndpoint(self):
+    def test_identify_endpoint(self):
         e = Endpoint.identify_endpoint(summoner_url_template.format(name=fake_name))
         self.assertTrue(e == 'lol/summoner/v3/summoners/by-name')
         e = Endpoint.identify_endpoint(match_url_template.format(matchid='3'))
@@ -108,7 +108,7 @@ class TestEndpoint(unittest.TestCase):
         e = Endpoint.identify_endpoint(static_champions_url)
         self.assertTrue(e == 'lol/static-data/v3/champions')
 
-    def test_limitsDefined(self):
+    def test_limits_defined(self):
         endpoint = Endpoint()
         self.assertFalse(endpoint.limits_defined)
         endpoint.handle_response_headers(headers)
@@ -116,7 +116,7 @@ class TestEndpoint(unittest.TestCase):
         endpoint.limits = {}
         self.assertFalse(endpoint.limits_defined)
 
-    def test_addData(self):
+    def test_add_data(self):
         self.assertRaises(Exception, self.endpoint.add_data, ({'other': 'thing'},))
         
         self.endpoint.add_data(self.default_data)
@@ -163,7 +163,7 @@ class TestEndpoint(unittest.TestCase):
         self.assertFalse(self.endpoint.available())
         self.assertFalse(self.endpoint.available())
 
-    def test_getUsage(self):
+    def test_get_usage(self):
         self.assertEqual(self.endpoint.get_usage(), 'No limits defined')
         
         self.endpoint.handle_response_headers(headers)
@@ -181,7 +181,7 @@ class TestEndpoint(unittest.TestCase):
         self.endpoint.handle_response_headers(new_headers)
         self.assertEqual(self.endpoint.get_usage(), '%s:%s' % (used + 1, count))  # Limit assumes 0 is old data
 
-    def test_nextReady(self):
+    def test_next_ready(self):
         self.assertEqual(rtime(self.endpoint.next_ready()), rtime())
         self.endpoint.handle_response_headers(headers)
         self.endpoint.add_data(self.default_data)
@@ -209,7 +209,23 @@ class TestEndpoint(unittest.TestCase):
         
         self.endpoint.get()
         self.assertEqual(self.endpoint.count, 3)
-        
+
+    def test_handle_delay(self):
+        self.endpoint.add_data(self.default_data)
+        self.assertTrue(self.endpoint.available())
+        self.endpoint._handle_delay(headers)
+        self.assertFalse(self.endpoint.available())
+        time.sleep(self.endpoint.default_retry_after)
+        self.assertTrue(self.endpoint.available())
+
+        new_headers = copy.copy(headers)
+        new_headers['X-Rate-Limit-Type'] = "Method"
+        new_headers['X-Retry-After'] = '0.1'
+        self.endpoint.handle_response_headers(new_headers, 200)
+        self.assertFalse(self.endpoint.available())
+        time.sleep(0.1)
+        self.assertTrue(self.endpoint.available())
+
 
 class TestPlatform(unittest.TestCase):
     def setUp(self):
