@@ -2,13 +2,14 @@ import time
 import datetime
 from Limit import Limit
 from Endpoint import Endpoint
+import HeaderTools
 
-
-class Platform():
+class Platform:
     def __init__(self, slug=''):
         self.slug = slug
         self.delay = False
         self.delay_end = None
+        self.default_retry_after = 1
 
         self.static_endpoints = {}
         self.static_count = 0
@@ -29,19 +30,19 @@ class Platform():
             return True
         return False
 
-    def add_data(self, data, atFront=False):
+    def add_data(self, data, front=False):
         # data is a dict with url inside, but other info too
         endpoint_str = Endpoint.identify_endpoint(data['url'])
         if 'static' in endpoint_str:
-            if not endpoint_str in self.static_endpoints:
+            if endpoint_str not in self.static_endpoints:
                 self.static_endpoints[endpoint_str] = Endpoint()
-            self.static_endpoints[endpoint_str].add_data(data, atFront)
+            self.static_endpoints[endpoint_str].add_data(data, front)
             self.static_count += 1
         else:
-            if not endpoint_str in self.limited_endpoints:
+            if endpoint_str not in self.limited_endpoints:
                 self.limited_endpoints[endpoint_str] = Endpoint()
                 self.ordered_limited_endpoints.append(endpoint_str)
-            self.limited_endpoints[endpoint_str].add_data(data, atFront)
+            self.limited_endpoints[endpoint_str].add_data(data, front)
             self.limited_count += 1
 
     def rate_limit_ok(self):
@@ -57,12 +58,10 @@ class Platform():
                 self.delay = False
         return True
 
-    def handle_response_headers(self, url, headers):
+    def handle_response_headers(self, url, headers, code=200):
         # Handle X-Rate-Limit-Type
-        if 'X-Rate-Limit-Type' in headers:
-            limit_type = headers['X-Rate-Limit-Type'].lower()
-            if limit_type == 'application':
-                self._handle_delay(headers)
+        if 'X-Rate-Limit-Type' in headers or (400 <= code < 500):
+            self._handle_delay(headers)
 
         # Check that X-App-Rate-Limit didn't change
         if 'X-App-Rate-Limit' in headers:
@@ -87,26 +86,16 @@ class Platform():
 
     def _handle_delay(self, headers):
         # Identify type of delay
-        limit_type = headers['X-Rate-Limit-Type']
-        delay_end = time.time() + 1  # default to 1 second in the future
-        if 'Retry-After' in headers:
-            # https://docs.python.org/3/library/datetime.html#strftime-strptime-behavior
-            date_format = '%a, %d %b %Y  %H:%M:%S %Z'  # Not certain on %d, might be unpadded
-            response_time = datetime.datetime.strptime(headers['Date'], date_format)
-            response_time = response_time + datetime.timedelta(seconds=float(headers['Retry-After']))
-            delay_end = time.mktime(response_time.timetuple())
-
-        if limit_type.lower() == 'application':  # Set delay in the Platform
+        limit_type = headers.get('X-Rate-Limit-Type', 'service').lower()
+        if limit_type.lower() == 'application':  # Set delay in the Platform. Service/Method handled at Endpoint level
             self.delay = True
-            self.delay_end = delay_end
-            return
+            self.delay_end = HeaderTools.retry_after_time(headers, self.default_retry_after)
 
     def _verify_limits(self, headers):
         try:
-            h_limits = headers['X-App-Rate-Limit'].split(',')
+            h_limits = HeaderTools.split_limits(headers, 'X-App-Rate-Limit')
             old_limits = set(self.platform_limits.keys())
-            for limit in h_limits:
-                requests, seconds = limit.split(':')
+            for requests, seconds in h_limits:
                 if seconds in self.platform_limits:
                     old_limits.remove(seconds)
                     if self.platform_limits[seconds].cap != requests:
@@ -122,7 +111,7 @@ class Platform():
 
     def _verify_counts(self, headers):
         try:
-            if not 'X-App-Rate-Limit-Count' in headers:
+            if 'X-App-Rate-Limit-Count' not in headers:
                 return
             h_limits = headers['X-App-Rate-Limit-Count'].split(',')
             for limit in h_limits:
@@ -145,6 +134,7 @@ class Platform():
     # nextReady() only matters if you've trying not to infinitely loop in the Ticker.
     # Why not have the ticker pause if all return not ready?
 
+    # noinspection PyMethodMayBeStatic
     def _soonest_available(self, endpoints):
         soonest = None
         for endpoint_str in endpoints:
@@ -153,7 +143,7 @@ class Platform():
             if endpoints[endpoint_str].available():
                 return time.time()
             else:
-                if soonest == None:
+                if soonest is None:
                     soonest = endpoints[endpoint_str].time_next_available()
                 else:
                     t = endpoints[endpoint_str].time_next_available()

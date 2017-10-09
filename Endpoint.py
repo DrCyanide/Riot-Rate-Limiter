@@ -1,7 +1,7 @@
 import time
 from collections import deque
 from Limit import Limit
-import datetime
+import HeaderTools
 
 
 class Endpoint:
@@ -22,21 +22,21 @@ class Endpoint:
 
     @classmethod
     def identify_endpoint(cls, url):
-        if '?' in url: # Remove the query string
+        if '?' in url:  # Remove the query string
             url = url[:url.find('?')]
         url = url.lower()
         split_url = url.split('/')
         try:
-            split_url = split_url[3:] # remove region
+            split_url = split_url[3:]  # remove region
             if 'by-name' in split_url: 
-                return '/'.join(split_url[:-1]) # Ignore the player name itself
+                return '/'.join(split_url[:-1])  # Ignore the player name itself
             else:
                 non_numeric = []
                 for segment in split_url:
                     if not segment.isnumeric():
                         non_numeric.append(segment)
                 return '/'.join(non_numeric)
-        except:
+        except Exception as e:
             return 'BadEndpoint'
       
     @property
@@ -54,18 +54,10 @@ class Endpoint:
             self._verify_counts(headers)
 
     def _handle_delay(self, headers):
-        limit_type = headers['X-Rate-Limit-Type'].lower()
-        retry_after = float(self.default_retry_after)
-        if 'Retry-After' in headers:
-            retry_after = float(headers['Retry-After'])
-        
+        limit_type = headers.get('X-Rate-Limit-Type', 'service').lower()
         if limit_type in ['service', 'method']:
             self.delay = True
-            # https://docs.python.org/3/library/datetime.html#strftime-strptime-behavior
-            date_format = '%a, %d %b %Y  %H:%M:%S %Z' # Not certain on %d, might be unpadded
-            response_time = datetime.datetime.strptime(headers['Date'], date_format)
-            response_time = response_time + datetime.timedelta(seconds=retry_after)
-            self.delay_end = time.mktime(response_time.timetuple())
+            self.delay_end = HeaderTools.retry_after_time(headers, self.default_retry_after)
 
     def _verify_limits(self, headers):
         try:
@@ -85,11 +77,11 @@ class Endpoint:
                 for seconds in old_limits:
                     self.limits.pop(seconds)
         except Exception as e:
-            print('Endpoint - verifyLimits: e'%e)
+            print('Endpoint - verifyLimits: e' % e)
 
     def _verify_counts(self, headers):
         try:
-            if not 'X-Method-Rate-Limit-Count' in headers:
+            if 'X-Method-Rate-Limit-Count' not in headers:
                 return
             h_limits = headers['X-Method-Rate-Limit-Count'].split(',')
             for limit in h_limits:
@@ -97,10 +89,10 @@ class Endpoint:
                 if seconds in self.limits:
                     self.limits[seconds].verify_count(int(used))
         except Exception as e:
-            print('Endpoint - _verifyCounts: %s'%e)
+            print('Endpoint - _verifyCounts: %s' % e)
 
-    def add_data(self, data, atFront=False):
-        if not 'url' in data:
+    def add_data(self, data, front=False):
+        if 'url' not in data:
             raise Exception('Invalid URL, required for addData')
         name = Endpoint.identify_endpoint(data['url'])
             
@@ -110,7 +102,7 @@ class Endpoint:
             if self.name != name:
                 raise Exception('Invalid URL, does not match endpoint')
 
-        if atFront:
+        if front:
             self.data_deque.appendleft(data)
         else:
             self.data_deque.append(data)
@@ -133,7 +125,7 @@ class Endpoint:
         if len(self.limits.keys()) == 0:
             return 'No limits defined'
         for limit_str in self.limits:
-            s = '%s:%s'%(self.limits[limit_str].used, self.limits[limit_str].cap)
+            s = '%s:%s' % (self.limits[limit_str].used, self.limits[limit_str].cap)
             strs.append(s)
         return ','.join(strs)
 

@@ -140,9 +140,9 @@ class TestEndpoint(unittest.TestCase):
         
         # Test adding data atFront
         self.assertEqual(self.endpoint.count, 0)
-        self.endpoint.add_data(self.default_data, atFront=True)
-        self.endpoint.add_data(m2, atFront=True)
-        self.endpoint.add_data(m3, atFront=True)
+        self.endpoint.add_data(self.default_data, front=True)
+        self.endpoint.add_data(m2, front=True)
+        self.endpoint.add_data(m3, front=True)
         
         self.assertEqual(self.endpoint.get(), m3)
         self.assertEqual(self.endpoint.get(), m2)
@@ -216,7 +216,7 @@ class TestPlatform(unittest.TestCase):
         self.slug = 'na'
         self.platform = Platform(self.slug)
 
-    def test_countAndHasURL(self):
+    def test_count_and_has_url(self):
         self.assertEqual(self.platform.count, 0)
         self.assertFalse(self.platform.has_url())
         
@@ -244,7 +244,7 @@ class TestPlatform(unittest.TestCase):
         self.assertEqual(self.platform.count, 0)
         self.assertFalse(self.platform.has_url())
 
-    def test_rateLimitOK(self):
+    def test_rate_limit_ok(self):
         url = match_url_template.format(matchid=1)
         self.assertTrue(self.platform.rate_limit_ok())
         self.platform.add_data({'url': match_url_template.format(matchid=1)})
@@ -295,7 +295,7 @@ class TestPlatform(unittest.TestCase):
         self.assertEqual(self.platform.limited_endpoints[endpoint_str].limits["1"].seconds, 1)
         self.assertEqual(self.platform.limited_endpoints[endpoint_str].limits["1"].used, 1)
 
-    def test_addData_static_random(self):
+    def test_add_data_static_random(self):
         s1 = {'url': static_champions_url}
         s2 = {'url': static_summoner_spells_url}
         s3 = {'url': static_items_url}
@@ -309,7 +309,7 @@ class TestPlatform(unittest.TestCase):
         self.assertTrue(self.platform.get() in s)
         self.assertRaises(Exception, self.platform.get)
 
-    def test_addData_static_sorted(self):
+    def test_add_data_static_sorted(self):
         c1 = {'url': static_champion_url.format(id=1)}
         c2 = {'url': static_champion_url.format(id=2)}
         c3 = {'url': static_champion_url.format(id=3)}
@@ -322,20 +322,20 @@ class TestPlatform(unittest.TestCase):
         self.assertEqual(self.platform.get(), c3)
         self.assertRaises(Exception, self.platform.get)
 
-    def test_addData_static_sorted_atFront(self):
+    def test_add_data_static_sorted_atFront(self):
         c1 = {'url': static_champion_url.format(id=1)}
         c2 = {'url': static_champion_url.format(id=2)}
         c3 = {'url': static_champion_url.format(id=3)}
-        self.platform.add_data(c1, atFront=True)
-        self.platform.add_data(c2, atFront=True)
-        self.platform.add_data(c3, atFront=True)
+        self.platform.add_data(c1, front=True)
+        self.platform.add_data(c2, front=True)
+        self.platform.add_data(c3, front=True)
         self.assertEqual(self.platform.static_count, 3)
         self.assertEqual(self.platform.get(), c3)
         self.assertEqual(self.platform.get(), c2)
         self.assertEqual(self.platform.get(), c1)
         self.assertRaises(Exception, self.platform.get)
 
-    def test_addData_limited_alternate(self):
+    def test_add_data_limited_alternate(self):
         m1 = {'url': match_url_template.format(matchid=1)}
         m2 = {'url': match_url_template.format(matchid=2)}
         m3 = {'url': match_url_template.format(matchid=3)}
@@ -357,7 +357,7 @@ class TestPlatform(unittest.TestCase):
         self.assertEqual(self.platform.get(), s3)
         self.assertRaises(Exception, self.platform.get)
     
-    def test_addData_limited_sorted(self):
+    def test_add_data_limited_sorted(self):
         m1 = {'url': match_url_template.format(matchid=1)}
         m2 = {'url': match_url_template.format(matchid=2)}
         m3 = {'url': match_url_template.format(matchid=3)}
@@ -370,18 +370,56 @@ class TestPlatform(unittest.TestCase):
         self.assertEqual(self.platform.get(), m3)
         self.assertRaises(Exception, self.platform.get)
 
-    def test_addData_limited_sorted_atFront(self):
+    def test_add_data_limited_sorted_atFront(self):
         m1 = {'url': match_url_template.format(matchid=1)}
         m2 = {'url': match_url_template.format(matchid=2)}
         m3 = {'url': match_url_template.format(matchid=3)}
-        self.platform.add_data(m1, atFront=True)
-        self.platform.add_data(m2, atFront=True)
-        self.platform.add_data(m3, atFront=True)
+        self.platform.add_data(m1, front=True)
+        self.platform.add_data(m2, front=True)
+        self.platform.add_data(m3, front=True)
         self.assertEqual(self.platform.limited_count, 3)
         self.assertEqual(self.platform.get(), m3)
         self.assertEqual(self.platform.get(), m2)
         self.assertEqual(self.platform.get(), m1)
         self.assertRaises(Exception, self.platform.get)
+
+    def test_available(self):
+        self.assertFalse(self.platform.available())
+        static_data_1 = {'url': static_items_url}
+        limited_data_1 = {'url': match_url_template.format(matchid=100)}
+        limited_data_2 = {'url': match_url_template.format(matchid=200)}
+        self.platform.add_data(static_data_1)
+        self.assertTrue(self.platform.available())
+        self.platform.get()
+        self.assertFalse(self.platform.available())
+        self.platform.add_data(limited_data_1)
+        self.assertTrue(self.platform.available())
+        self.platform.add_data(limited_data_2)
+        self.platform.get()
+        self.assertTrue(self.platform.available())  # No response headers yet
+
+        new_headers = copy.copy(headers)
+        new_headers['X-Method-Rate-Limit'] = '1:0.1'
+        new_headers['X-Method-Rate-Limit-Count'] = '1:0.1'
+        self.platform.handle_response_headers(match_url_template.format(matchid=100), new_headers, 200)
+        self.assertFalse(self.platform.available())
+        time.sleep(0.1)
+        self.assertTrue(self.platform.available())
+
+    def test_handle_delay(self):
+        limited_data_1 = {'url': match_url_template.format(matchid=100)}
+        limited_data_2 = {'url': match_url_template.format(matchid=200)}
+        self.platform.add_data(limited_data_1)
+        self.platform.add_data(limited_data_2)
+        self.assertTrue(self.platform.available())
+        self.platform.get()
+        new_headers = copy.copy(headers)
+        new_headers['X-Method-Rate-Limit'] = '2:0.1'
+        new_headers['X-Method-Rate-Limit-Count'] = '1:0.1'
+        self.platform.handle_response_headers(match_url_template.format(matchid=100), new_headers, 429)
+        self.assertFalse(self.platform.available())  # Should have a default delay
+
+
 
 # RateLimiter
 
