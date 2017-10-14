@@ -111,11 +111,9 @@ class Endpoint:
             if not self.limits[limit_str].ready():
                 return False
         if self.delay:
-            print('Delay')
             if time.time() < self.delay_end:
                 return False
             else:
-                print('Delay over!')
                 self.delay = False
         return True
 

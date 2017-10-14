@@ -233,12 +233,15 @@ class TestEndpoint(unittest.TestCase):
         time.sleep(self.endpoint.default_retry_after)
         self.assertTrue(self.endpoint.available())
 
+        delay = 1
         new_headers = get_date_header()
         new_headers['X-Rate-Limit-Type'] = "Method"
-        new_headers['X-Retry-After'] = '0.1'
-        self.endpoint.handle_response_headers(new_headers, 200)
+        new_headers['X-Retry-After'] = '%s' % delay
+        self.endpoint.add_data(self.default_data)
+        self.endpoint.get()
+        self.endpoint.handle_response_headers(new_headers)
         self.assertFalse(self.endpoint.available())
-        time.sleep(0.1)
+        time.sleep(delay)
         self.assertTrue(self.endpoint.available())
 
 
