@@ -244,6 +244,22 @@ class TestEndpoint(unittest.TestCase):
         time.sleep(delay)
         self.assertTrue(self.endpoint.available())
 
+    def test_get_usage(self):
+        self.assertEqual(self.endpoint.get_usage(), 'No limits defined')
+        self.endpoint.handle_response_headers(headers)
+        self.assertEqual(self.endpoint.get_usage(), '1:270')
+        self.endpoint.add_data({'url': match_url_template.format(matchid=1)})
+        self.endpoint.get()
+        self.assertEqual(self.endpoint.get_usage(), '2:270')
+
+        new_headers = copy.copy(headers)
+        new_headers['X-Method-Rate-Limit'] = '10:1,100:5'
+        new_headers['X-Method-Rate-Limit-Count'] = '1:1,5:5'
+        self.endpoint.handle_response_headers(new_headers)
+        self.assertEqual(self.endpoint.get_usage(), '1:10,5:100')
+        self.endpoint.add_data({'url': match_url_template.format(matchid=1)})
+        self.endpoint.get()
+        self.assertEqual(self.endpoint.get_usage(), '2:10,6:100')
 
 class TestPlatform(unittest.TestCase):
     def setUp(self):
@@ -452,8 +468,26 @@ class TestPlatform(unittest.TestCase):
         new_headers['X-Method-Rate-Limit-Count'] = '1:0.1'
         self.platform.handle_response_headers(match_url_template.format(matchid=100), new_headers, 429)
         self.assertFalse(self.platform.available())  # Should have a default delay
+        time.sleep(1)
+        self.assertTrue(self.platform.available())
 
+    def test_get_usage(self):
+        used = {'static':{}, 'limited':{}}
+        self.assertEqual(self.platform.get_usage(), used)
+        url = match_url_template.format(matchid=100)
+        match_endpoint = Endpoint.identify_endpoint(url)
 
+        used['limited'][match_endpoint] = 'No limits defined'
+        self.platform.add_data({'url': url})
+        self.assertEqual(self.platform.get_usage(), used)
+        self.platform.handle_response_headers(url, headers)
+        used['limited'][match_endpoint] = '1:270'
+        self.assertEqual(self.platform.get_usage(), used)
+        self.platform.get()
+        used['limited'][match_endpoint] = '2:270'
+        self.assertEqual(self.platform.get_usage(), used)
+
+        # TODO: Static tests
 
 # RateLimiter
 

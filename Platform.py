@@ -109,7 +109,7 @@ class Platform:
             for seconds in old_limits:
                 self.platform_limits.pop(seconds)
         except Exception as e:
-            print('Platform - verifyLimits: %s' % e)
+            print('Platform - verify_limits: %s' % e)
 
     def _verify_counts(self, headers):
         try:

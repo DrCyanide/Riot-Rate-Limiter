@@ -48,9 +48,9 @@ class Endpoint:
     def handle_response_headers(self, headers, code=200):
         if 'X-Rate-Limit-Type' in headers or (400 <= code <= 500):
             self._handle_delay(headers)
-        if 'X-Method-Rate-Limit' in headers: 
+        if 'X-Method-Rate-Limit' in headers:
             self._verify_limits(headers)
-        if 'X-Method-Rate-Limit-Count' in headers: 
+        if 'X-Method-Rate-Limit-Count' in headers:
             self._verify_counts(headers)
 
     def _handle_delay(self, headers):
@@ -121,7 +121,7 @@ class Endpoint:
         strs = []
         if len(self.limits.keys()) == 0:
             return 'No limits defined'
-        for limit_str in self.limits:
+        for limit_str in sorted(self.limits):
             s = '%s:%s' % (self.limits[limit_str].used, self.limits[limit_str].cap)
             strs.append(s)
         return ','.join(strs)
