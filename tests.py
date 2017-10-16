@@ -178,24 +178,6 @@ class TestEndpoint(unittest.TestCase):
         self.assertFalse(self.endpoint.available())
         self.assertFalse(self.endpoint.available())
 
-    def test_get_usage(self):
-        self.assertEqual(self.endpoint.get_usage(), 'No limits defined')
-        
-        self.endpoint.handle_response_headers(headers)
-        count, seconds = headers['X-Method-Rate-Limit'].split(':')
-        used, seconds = headers['X-Method-Rate-Limit-Count'].split(':')
-        used = int(used)
-        self.assertEqual(self.endpoint.get_usage(), '%s:%s' % (used, count))
-        
-        self.endpoint.add_data(self.default_data)
-        self.endpoint.get()
-        self.assertEqual(self.endpoint.get_usage(), '%s:%s' % (used + 1, count))
-        
-        new_headers = copy.copy(headers)
-        new_headers['X-Method-Rate-Limit-Count'] = '0:%s' % seconds
-        self.endpoint.handle_response_headers(new_headers)
-        self.assertEqual(self.endpoint.get_usage(), '%s:%s' % (used + 1, count))  # Limit assumes 0 is old data
-
     def test_next_ready(self):
         self.assertEqual(rtime(self.endpoint.next_ready()), rtime())
         self.endpoint.handle_response_headers(headers)
@@ -247,10 +229,19 @@ class TestEndpoint(unittest.TestCase):
     def test_get_usage(self):
         self.assertEqual(self.endpoint.get_usage(), 'No limits defined')
         self.endpoint.handle_response_headers(headers)
-        self.assertEqual(self.endpoint.get_usage(), '1:270')
-        self.endpoint.add_data({'url': match_url_template.format(matchid=1)})
+        count, seconds = headers['X-Method-Rate-Limit'].split(':')
+        used, seconds = headers['X-Method-Rate-Limit-Count'].split(':')
+        used = int(used)
+        self.assertEqual(self.endpoint.get_usage(), '%s:%s' % (used, count))
+
+        self.endpoint.add_data(self.default_data)
         self.endpoint.get()
-        self.assertEqual(self.endpoint.get_usage(), '2:270')
+        self.assertEqual(self.endpoint.get_usage(), '%s:%s' % (used + 1, count))
+
+        new_headers = copy.copy(headers)
+        new_headers['X-Method-Rate-Limit-Count'] = '0:%s' % seconds
+        self.endpoint.handle_response_headers(new_headers)
+        self.assertEqual(self.endpoint.get_usage(), '%s:%s' % (used + 1, count))  # Limit assumes 0 is old data
 
         new_headers = copy.copy(headers)
         new_headers['X-Method-Rate-Limit'] = '10:1,100:5'
@@ -260,6 +251,7 @@ class TestEndpoint(unittest.TestCase):
         self.endpoint.add_data({'url': match_url_template.format(matchid=1)})
         self.endpoint.get()
         self.assertEqual(self.endpoint.get_usage(), '2:10,6:100')
+
 
 class TestPlatform(unittest.TestCase):
     def setUp(self):
@@ -472,11 +464,10 @@ class TestPlatform(unittest.TestCase):
         self.assertTrue(self.platform.available())
 
     def test_get_usage(self):
-        used = {'static':{}, 'limited':{}}
+        used = {'static': {}, 'limited': {}}
         self.assertEqual(self.platform.get_usage(), used)
         url = match_url_template.format(matchid=100)
         match_endpoint = Endpoint.identify_endpoint(url)
-
         used['limited'][match_endpoint] = 'No limits defined'
         self.platform.add_data({'url': url})
         self.assertEqual(self.platform.get_usage(), used)
@@ -487,7 +478,18 @@ class TestPlatform(unittest.TestCase):
         used['limited'][match_endpoint] = '2:270'
         self.assertEqual(self.platform.get_usage(), used)
 
-        # TODO: Static tests
+        # Static tests
+        static_endpoint = Endpoint.identify_endpoint(static_champions_url)
+        self.platform.add_data({'url': static_champions_url})
+        used['static'][static_endpoint] = 'No limits defined'
+        self.assertEqual(self.platform.get_usage(), used)
+        self.platform.get()
+        new_headers = copy.copy(headers)
+        new_headers['X-Method-Rate-Limit-Count'] = '1:60,2:120'
+        new_headers['X-Method-Rate-Limit'] = '7:60,10:120'
+        used['static'][static_endpoint] = '1:7,2:10'
+        self.platform.handle_response_headers(static_champions_url, new_headers)
+
 
 # RateLimiter
 
