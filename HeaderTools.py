@@ -13,11 +13,12 @@ def format_date(headers):
 def retry_after_time(headers, default_retry_after=1):
     # Has issues with retry_after's shorter than 1 second,
     # but the documentation says that X-Retry-Ater will be in seconds
+    # ... This whole thing might be overkill...
     response_time = format_date(headers)
     retry_after = math.ceil(float(headers.get('X-Retry-After', default_retry_after)))
     response_time = response_time + datetime.timedelta(seconds=retry_after)
     local_time = time.mktime(time.localtime())
-    #offset = time.mktime(time.gmtime()) - local_time  # GMT conversion # was being effected by timezone
+    #offset = time.mktime(time.gmtime()) - local_time # was being effected by timezone
     offset = time.mktime(datetime.datetime.utcnow().timetuple()) - local_time  # GMT conversion
     localized_time = time.mktime(response_time.timetuple()) - offset
     return localized_time

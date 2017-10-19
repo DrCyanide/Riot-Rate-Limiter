@@ -24,10 +24,11 @@ get_condition = None
 logTimes = True
 startTime = None
 
-class MyHTTPHandler(http.server.BaseHTTPRequestHandler): 
-    def do_OPTIONS(self): # For CORS requests
+
+class MyHTTPHandler(http.server.BaseHTTPRequestHandler):
+    def do_OPTIONS(self):  # For CORS requests
         self.send_response(200, "ok")
-        #self.send_header('Access-Control-Allow-Origin', '*')
+        # self.send_header('Access-Control-Allow-Origin', '*')
         self.send_header('Access-Control-Allow-Methods', 'GET, POST, PUT, OPTIONS')
         self.send_header("Access-Control-Allow-Headers", "X-Requested-With")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
@@ -36,7 +37,7 @@ class MyHTTPHandler(http.server.BaseHTTPRequestHandler):
         
         self.end_headers()
 
-    def end_headers (self):
+    def end_headers(self):
         self.send_header('Access-Control-Allow-Origin', '*')
         http.server.BaseHTTPRequestHandler.end_headers(self)
 
@@ -58,11 +59,11 @@ class MyHTTPHandler(http.server.BaseHTTPRequestHandler):
         
         if logTimes:
             startTime = time.time()
-            print('Start: %s'%startTime)
+            print('Start: %s' % startTime)
         
         data = {}
         data['url'] = self.headers.get('X-Url')
-        if data['url'] == None:
+        if data['url']is None:
             self.send_response(400)
             self.wfile.write('No X-Url header detected')
             self.end_headers()
@@ -72,22 +73,22 @@ class MyHTTPHandler(http.server.BaseHTTPRequestHandler):
         data['return_url'] = self.headers.get('X-Return-Url')
         
         # The Riot API has no commands where you just send data, so no return_url = error
-        if  data['method'] in ['PUT','POST'] and (data['return_url'] == None):
+        if  data['method'] in ['PUT','POST'] and (data['return_url'] is None):
             self.send_response(404)
             self.end_headers()
             return
             
-        platform_slug = identifyPlatform(data['url'])
+        platform_slug = identify_platform(data['url'])
         if platform_slug in platforms:
             platform_lock.acquire()
-            platforms, added = addData(data, platforms)
+            platforms, added = add_data(data, platforms)
             platform_lock.release()
         else:
             platform_lock.acquire()
             platforms[platform_slug] = Platform(slug=platform_slug)
-            platforms, added = addData(data, platforms)
+            platforms, added = add_data(data, platforms)
             platform_lock.release()
-        #print('%s count: %s'%(platform_slug, platforms[platform_slug].count))
+        # print('%s count: %s'%(platform_slug, platforms[platform_slug].count))
         
         # Notify ticker
         ticker_condition.acquire()
@@ -110,15 +111,14 @@ class MyHTTPHandler(http.server.BaseHTTPRequestHandler):
                     self.wfile.write(outbound_data)                   
                     if logTimes:
                         t = time.time()
-                        print('End: %s'%(t-startTime))
+                        print('End: %s' % (t-startTime))
  
                     # TODO: Cleanup retrieved data so it doesn't keep taking up memory
                     return
                     
         self.send_response(200)
         self.end_headers()
-    
-    
+
     def checkSecurity(self):
         intruder = False
         IP = self.address_string()
@@ -129,68 +129,124 @@ class MyHTTPHandler(http.server.BaseHTTPRequestHandler):
             if IP in config['security']['blacklist']:
                 intruder = True
         if intruder:
-            print('Unauthorized access detected from %s'%IP)
+            print('Unauthorized access detected from %s' % IP)
             self.send_response(404)
             self.end_headers()
         return not intruder
         
     
-def addData(data, platforms, atFront=False, max_attempts=3):
+def add_data(data, platforms, at_front=False, max_attempts=3):
     # Returns platforms and if it was added
     # syncmanager dicts require the update() command to be run
     # before anything will be saved. The normal 'addData()' method
     # won't result in the object being pickled again, thus it will
     # look like there was no update.
-    if not 'attempts' in data:
+    if 'attempts' not in data:
         data['attempts'] = 0
     data['attempts'] += 1
     
     if data['attempts'] >= max_attempts:
         return platforms, False
         
-    platform_slug = identifyPlatform(data['url'])
-    p = platforms[platform_slug]
-    p.add_data(data, atFront)
-    platforms.update([(platform_slug,p)])
+    platform_slug = identify_platform(data['url'])
+    platform = platforms[platform_slug]
+    platform.add_data(data, at_front)
+    platforms.update([(platform_slug,platform)])
     
     return platforms, True
     
     
-def getData(platform_slug, platforms):
-    # See addData comment
-    #global platforms
-    p = platforms[platform_slug]
-    data = p.get()
-    platforms.update([(platform_slug,p)])
+def get_data(platform_slug, platforms):
+    # See add_data comment
+    platform = platforms[platform_slug]
+    data = platform.get()
+    platforms.update([(platform_slug,platform)])
     return platforms, data
     
     
-def identifyPlatform(url):
+def identify_platform(url):
     split_url = url.lower().split('/')
     try:
         platform = (split_url[2].split('.')[0])
     except:
         platform = 'unknown'
     return platform
-    
+
+
+def handle_return(data, get_condition, get_dict, reply_condition, reply_queue):
+    if data['method'] == 'GET':
+        get_condition.acquire()
+        get_dict.update([(data['url'], data['response'])])
+        get_condition.notify_all()  # we don't have a specific response listening
+        get_condition.release()
+    else:
+        reply_condition.acquire()
+        reply_queue.put(data)
+        reply_condition.notify()
+        reply_condition.release()
+
+
+def handle_response(response, data, platforms, platform_lock, reply_condition, reply_queue, get_condition, get_dict, ticker_condition):
+    headers = dict(response.headers)
+    platform_id = identify_platform(data['url'])
+    platform = platforms[platform_id]
+
+    platform_lock.acquire()
+    platform.handle_response_headers(data['url'], headers)  # Handles delays on it's own
+    platforms.update([(platform_id, platform)])
+    platform_lock.release()
+
+    data['response'] = response.read()
+    data['code'] = response.code
+
+    if response.code == 200:
+        handle_return(data, get_condition, get_dict, reply_condition, reply_queue)
+
+    # TODO: handle the error (500, 403, 404, 429, 401)
+    if response.code == 429:  # Rate Limit Issue
+        platform_lock.acquire()
+        platforms, added = add_data(data, platforms, at_front=True)
+        platform_lock.release()
+
+        if not added:
+            handle_return(data, get_condition, get_dict, reply_condition, reply_queue)
+
+        else:
+            print('Retrying!')
+            ticker_condition.acquire()
+            ticker_condition.notify()
+            ticker_condition.release()
+
+    # if e.code == 500:
+    #   Internal server issue
+    #   platform.handleDelay(url, headers)
+    #   retry
+    # if e.code == 401:
+    #   Invalid API Key
+    #   stop?
+    # if e.code == 403:
+    #   Blacklisted or Internal server issue
+    #   retry?
+
+    else:
+        # Unknown error
+        handle_return(data, get_condition, get_dict, reply_condition, reply_queue)
+
+    return platforms
+
 
 def ticker(running, platforms, ticker_condition, r_queue, r_condition):
     print('Ticker started')
     try:
         while running.is_set():
-            next_run = None
+            run_now = False
             for platform_slug in platforms.keys():
                 if platforms[platform_slug].available():
-                    next_run = platforms[platform_slug].time_next_available()
-                    break # at least one platform ready
-                else:
-                    next = platforms[platform_slug].time_next_available()
-                    if next_run == None or next < next_run:
-                        next_run = next
-                
-                    
-            if next_run == None:
-                #print("Ticker didn't find anything, sleeping")
+                    run_now = True
+                    break
+
+            if not run_now:
+                # print("Ticker didn't find anything, sleeping")
                 ticker_condition.acquire()
                 ticker_condition.wait()
                 ticker_condition.release()
@@ -198,22 +254,22 @@ def ticker(running, platforms, ticker_condition, r_queue, r_condition):
             print('Ticker found something!')
             
             # sleep until rate/method limits are OK
-            now = time.time()
-            if next_run > now:
-                time.sleep(next_run - now)
-            else:
-                print('No sleep!\n\tNow: %s\n\tNext:%s'%(now, next_run))
+            # now = time.time()
+            # if next_run > now:
+            #     time.sleep(next_run - now)
+            # else:
+            #     print('No sleep!\n\tNow: %s\n\tNext:%s' % (now, next_run))
             
             for platform_slug in platforms.keys():
                 if platforms[platform_slug].available():
-                    platforms, data = getData(platform_slug, platforms)
+                    platforms, data = get_data(platform_slug, platforms)
                     
                     # TODO: 
                     # Check the retriever queue or the idle retrievers to make sure
                     # that things don't get overloaded. Log when unable to keep up
+
                     r_condition.acquire()
                     r_queue.put(data)
-                    #print('r_queue size: %s'%r_queue.qsize())
                     r_condition.notify()
                     r_condition.release()
         print('Ticker shut down')
@@ -221,7 +277,6 @@ def ticker(running, platforms, ticker_condition, r_queue, r_condition):
     except KeyboardInterrupt:
         # Manual Shutdown
         pass
-
 
 
 def retriever(running, api_key, platforms, r_queue, r_condition, get_dict, get_condition, reply_queue, reply_condition, ticker_condition, platform_lock):
@@ -235,108 +290,26 @@ def retriever(running, api_key, platforms, r_queue, r_condition, get_dict, get_c
                 r_condition.release()
                 continue
             else:
-                data, platform_needs_limit, method_needs_limit = r_queue.get()
+                data = r_queue.get()
                 r_condition.release()
-                #if logTimes:
-                #    t = time.time()
-                #    print('Retriever start: %s'%(t-startTime))
-            
+
             # TODO:
             # Some way to test without using up rate limit? Dummy mode?
             try:
-                #print('Retriever - Data pulled: %s'%data)
                 r = urllib.request.Request(data['url'], headers={'X-Riot-Token': api_key})
                 response = urllib.request.urlopen(r)
-               
-                # Update limits/counts
-                headers = dict(response.headers)
-                #headers = dict(zip(response.headers.keys(), response.headers.values())) # pre 3.5?
-                platform_id = identifyPlatform(data['url'])
-                platform = platforms[platform_id]
-                
-                
-                # handle 200 response
-                
-                if platform_needs_limit or method_needs_limit:
-                    if platform_needs_limit:
-                        platform.setLimit(headers)
-                    if method_needs_limit:
-                        platform.setEndpointLimit(data['url'], headers)
-                    platforms.update([(platform_id, platform)])
-                
-                response_body = response.read()
-                if data['method'] == 'GET':
-                    get_condition.acquire()
-                    get_dict.update([(data['url'], response_body)])
-                    get_condition.notify_all() # we don't have a specific response listening
-                    get_condition.release()
-                else:
-                    data['response'] = response_body
-                    data['code'] = '200'
-                    reply_condition.acquire()
-                    reply_queue.put(data)
-                    reply_condition.notify()
-                    reply_condition.release()
+                platforms = handle_response(response, data, platforms, platform_lock, reply_condition, reply_queue, get_condition, get_dict, ticker_condition)
                 
             except urllib.error.HTTPError as e:
                 print('Error from API: %s'%e)
-                # TODO: handle the error (500, 403, 404, 429, 401)
-                if e.code == 429: # Rate Limit Issue
-                    platform_id = identifyPlatform(data['url'])
-                    platform = platforms[platform_id]
-                    platform.handleDelay(data['url'], dict(e.headers))
-                    platforms.update([(platform_id, platform)])
-                    
-                    platform_lock.acquire()
-                    platforms, added = addData(data, platforms, atFront=True)
-                    platform_lock.release()
-                    
-                    if not added:
-                        response_body = e.read()
-                        if data['method'] == 'GET':
-                            get_condition.acquire()
-                            get_dict.update([(data['url'], response_body)])
-                            get_condition.notify_all() # we don't have a specific response listening
-                            get_condition.release()
-                        else:
-                            data['response'] = response_body
-                            data['code'] = e.code
-                            reply_condition.acquire()
-                            reply_queue.put(data)
-                            reply_condition.notify()
-                            reply_condition.release()
-                    else:
-                        print('Retrying!')
-                        ticker_condition.acquire()
-                        ticker_condition.notify()
-                        ticker_condition.release()
-                
-                # if e.code == 500:
-                #   Internal server issue
-                #   platform.handleDelay(url, headers)
-                #   retry
-                # if e.code == 401:
-                #   Invalid API Key
-                #   stop?
-                # if e.code == 403:
-                #   Blacklisted or Internal server issue
-                #   retry?
-  
-                response_body = e.read()
-
-                if data['method'] == 'GET':
-                    get_condition.acquire()
-                    get_dict.update([(data['url'], response_body)])
-                    get_condition.notify_all()
-                    get_condition.release()
+                platforms = handle_response(e, data, platforms, platform_lock, reply_condition, reply_queue, get_condition, get_dict, ticker_condition)
                 
             except Exception as e:
-                print('Other error: %s'%e)
+                print('Other error: %s' % e)
                 print(traceback.format_exc())
-                print('URL: %s'%data['url'])
-                # return 500
-                
-            
+                print('URL: %s' % data['url'])
+                # TODO: return 500, since this server had an error
+
         print('Retriever shut down')
     except KeyboardInterrupt:
         # Manual Shutdown
@@ -360,12 +333,13 @@ def outbound(running, reply_queue, reply_condition):
                 request.add_header('code', data['code'])
                 urllib.request.urlopen(request)
             except Exception as e:
-                print('Outbound error: %s'%e)
+                print('Outbound error: %s' % e)
     except KeyboardInterrupt:
         # Manual Shutdown
         pass
-    
-def readConfig():
+
+
+def read_config():
     global config, api_key
     try:
         with open(config_path) as f:
@@ -382,15 +356,12 @@ def readConfig():
         print('\t{}'.format(e))
         exit(0)
     
-    
-    
 
-    
 def main():
-    #global server
+    # global server
     global ticker_condition, platforms
     global get_dict, get_condition
-    readConfig()
+    read_config()
     
     manager = SyncManager()
     manager.start()
@@ -434,8 +405,7 @@ def main():
     ticking = Process(target=ticker, args=ticking_args, name='Ticker')
     ticking.deamon = True
     ticking.start()
-    
-    
+
     server = http.server.HTTPServer(
         (config['server']['host'], config['server']['port']), MyHTTPHandler)
     
@@ -443,6 +413,7 @@ def main():
         server.serve_forever()
     except KeyboardInterrupt:
         print('\nStopping server...')        
-    
+
+
 if __name__ == "__main__":
     main()        
