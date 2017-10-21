@@ -491,5 +491,6 @@ class TestPlatform(unittest.TestCase):
         self.platform.handle_response_headers(static_champions_url, new_headers)
 
 
+
 if __name__ == '__main__':
     unittest.main()

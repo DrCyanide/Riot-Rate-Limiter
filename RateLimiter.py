@@ -42,18 +42,18 @@ class MyHTTPHandler(http.server.BaseHTTPRequestHandler):
         http.server.BaseHTTPRequestHandler.end_headers(self)
 
     def do_GET(self):
-        self.handleRequest()
+        self.handle_request()
 
     def do_PUT(self):
-        self.handleRequest()
+        self.handle_request()
         
     def do_POST(self):
-        self.handleRequest()
+        self.handle_request()
         
-    def handleRequest(self):
+    def handle_request(self):
         global platforms
         global startTime
-        security_pass = self.checkSecurity()
+        security_pass = self.check_security()
         if not security_pass:
             return
         
@@ -119,7 +119,7 @@ class MyHTTPHandler(http.server.BaseHTTPRequestHandler):
         self.send_response(200)
         self.end_headers()
 
-    def checkSecurity(self):
+    def check_security(self):
         intruder = False
         IP = self.address_string()
         if len(config['security']['whitelist']) > 0:
@@ -174,16 +174,20 @@ def identify_platform(url):
 
 
 def handle_return(data, get_condition, get_dict, reply_condition, reply_queue):
-    if data['method'] == 'GET':
-        get_condition.acquire()
-        get_dict.update([(data['url'], data['response'])])
-        get_condition.notify_all()  # we don't have a specific response listening
-        get_condition.release()
-    else:
-        reply_condition.acquire()
-        reply_queue.put(data)
-        reply_condition.notify()
-        reply_condition.release()
+    try:
+        if data['method'] == 'GET':
+            get_condition.acquire()
+            get_dict.update([(data['url'], data['response'])])
+            get_condition.notify_all()  # we don't have a specific response listening
+            get_condition.release()
+        else:
+            reply_condition.acquire()
+            reply_queue.put(data)
+            reply_condition.notify()
+            reply_condition.release()
+    except Exception as e:
+        print('Exception in handle_return')
+        print(e)
 
 
 def handle_response(response, data, platforms, platform_lock, reply_condition, reply_queue, get_condition, get_dict, ticker_condition):
@@ -299,16 +303,24 @@ def retriever(running, api_key, platforms, r_queue, r_condition, get_dict, get_c
                 r = urllib.request.Request(data['url'], headers={'X-Riot-Token': api_key})
                 response = urllib.request.urlopen(r)
                 platforms = handle_response(response, data, platforms, platform_lock, reply_condition, reply_queue, get_condition, get_dict, ticker_condition)
-                
+
+            except urllib.error.URLError as e:
+                print('Invalid URL: %s' % data['url'])
+                data['code'] = 404
+                data['response'] = 'Invalid URL'.encode('utf-8')
+                handle_return(data, get_condition, get_dict, reply_condition, reply_queue)
+
             except urllib.error.HTTPError as e:
-                print('Error from API: %s'%e)
+                print('Error from API: %s' % e)
                 platforms = handle_response(e, data, platforms, platform_lock, reply_condition, reply_queue, get_condition, get_dict, ticker_condition)
                 
             except Exception as e:
                 print('Other error: %s' % e)
                 print(traceback.format_exc())
                 print('URL: %s' % data['url'])
-                # TODO: return 500, since this server had an error
+                data['code'] = 500
+                data['response'] = 'Rate Limiter server error'.encode('utf-8')
+                handle_return(data, get_condition, get_dict, reply_condition, reply_queue)
 
         print('Retriever shut down')
     except KeyboardInterrupt:
