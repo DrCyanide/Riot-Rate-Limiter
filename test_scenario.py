@@ -15,7 +15,10 @@ requested_matches = None
 
 class MyResponseListener(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
+        content_len = int(self.headers.get('content-length', 0))
+        post_body = self.rfile.read(content_len)
         print(self.headers)
+        print(post_body)
         self.send_response(200)
         self.end_headers()
 
@@ -43,7 +46,7 @@ def scenario_manager(config, summoner_name, platform_slug, gamemode_summaries, c
     limiter_url = 'http://{0}:{1}'.format(config['server']['host'], config['server']['port'])
     response_url = 'http://{0}:{1}'.format(config['server']['host'], config['server']['port'] + 1)
 
-    summoner_by_name = 'https://{slug}.api.riotgames.com/lol/summoners/v3/summoners/by-name/{name}'
+    summoner_by_name = 'https://{slug}.api.riotgames.com/lol/summoner/v3/summoners/by-name/{name}'
     issue_request(limiter_url, response_url, summoner_by_name.format(slug=platform_slug, name=summoner_name))
 
 
