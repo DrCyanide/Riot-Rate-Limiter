@@ -28,13 +28,12 @@ startTime = None
 class MyHTTPHandler(http.server.BaseHTTPRequestHandler):
     def do_OPTIONS(self):  # For CORS requests
         self.send_response(200, "ok")
-        # self.send_header('Access-Control-Allow-Origin', '*')
         self.send_header('Access-Control-Allow-Methods', 'GET, POST, PUT, OPTIONS')
-        self.send_header("Access-Control-Allow-Headers", "X-Requested-With")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
-        self.send_header("Access-Control-Allow-Headers", "X-Url")
-        self.send_header("Access-Control-Allow-Headers", "X-Return-Url")
-        
+
+        # self.send_header('Access-Control-Allow-Origin', '*')  wasn't working
+        allowed_headers = ["X-Url", "X-Return-Url", "Content-Type", "X-Info"]
+        for header in allowed_headers:
+            self.send_header("Access-Control-Allow-Headers", header)
         self.end_headers()
 
     def end_headers(self):
@@ -71,7 +70,8 @@ class MyHTTPHandler(http.server.BaseHTTPRequestHandler):
         
         data['method'] = self.command.upper()
         data['return_url'] = self.headers.get('X-Return-Url')
-        
+        data['info'] = self.headers.get('X-Info')
+
         # The Riot API has no commands where you just send data, so no return_url = error
         if  data['method'] in ['PUT','POST'] and (data['return_url'] is None):
             self.send_response(404)
@@ -304,17 +304,20 @@ def retriever(running, api_key, platforms, r_queue, r_condition, get_dict, get_c
                 response = urllib.request.urlopen(r)
                 platforms = handle_response(response, data, platforms, platform_lock, reply_condition, reply_queue, get_condition, get_dict, ticker_condition)
 
+            except urllib.error.HTTPError as e:
+                print('Error from API: %s' % e)
+                platforms = handle_response(e, data, platforms, platform_lock, reply_condition, reply_queue,
+                                            get_condition, get_dict, ticker_condition)
+
             except urllib.error.URLError as e:
                 print('Invalid URL: %s' % data['url'])
+                print('Reason: %s' % e.reason)
                 data['code'] = 404
                 data['response'] = 'Invalid URL'.encode('utf-8')
                 handle_return(data, get_condition, get_dict, reply_condition, reply_queue)
 
-            except urllib.error.HTTPError as e:
-                print('Error from API: %s' % e)
-                platforms = handle_response(e, data, platforms, platform_lock, reply_condition, reply_queue, get_condition, get_dict, ticker_condition)
-                
             except Exception as e:
+                # TODO: Have this return a 500 code in the response for this server, not a 500 from Riot's servers
                 print('Other error: %s' % e)
                 print(traceback.format_exc())
                 print('URL: %s' % data['url'])
@@ -341,8 +344,10 @@ def outbound(running, reply_queue, reply_condition):
                 data = reply_queue.get()
                 
                 request = urllib.request.Request(data['return_url'], data['response'], method='POST')
-                request.add_header('url', data['url'])
-                request.add_header('code', data['code'])
+                request.add_header('X-Url', data['url'])
+                request.add_header('X-Code', '%s' % data['code'])
+                if data['info'] is not None:
+                    request.add_header('X-Info', data['info'])
                 urllib.request.urlopen(request)
             except Exception as e:
                 print('Outbound error: %s' % e)

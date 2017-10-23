@@ -15,11 +15,15 @@ requested_matches = None
 
 class MyResponseListener(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
-        content_len = int(self.headers.get('content-length', 0))
-        post_body = self.rfile.read(content_len)
-        print(self.headers)
-        print(post_body)
-        self.send_response(200)
+        try:
+            content_len = int(self.headers.get('content-length', 0))
+            post_body = self.rfile.read(content_len)
+            print(self.headers)
+            print(post_body)
+            self.send_response(200)
+        except Exception as e:
+            print('Exception handling response - %s' % e)
+            self.send_response(500)
         self.end_headers()
 
 
@@ -47,13 +51,15 @@ def scenario_manager(config, summoner_name, platform_slug, gamemode_summaries, c
     response_url = 'http://{0}:{1}'.format(config['server']['host'], config['server']['port'] + 1)
 
     summoner_by_name = 'https://{slug}.api.riotgames.com/lol/summoner/v3/summoners/by-name/{name}'
-    issue_request(limiter_url, response_url, summoner_by_name.format(slug=platform_slug, name=summoner_name))
+    issue_request(limiter_url, response_url, summoner_by_name.format(slug=platform_slug, name=summoner_name), info="Hello World")
 
 
-def issue_request(limiter_url, response_url, riot_url):
+def issue_request(limiter_url, response_url, riot_url, info=None):
     r = urllib.request.Request(limiter_url, method='POST')
     r.add_header('X-Url', riot_url)
     r.add_header('X-Return-Url', response_url)
+    if info:
+        r.add_header('X-Info', info)
     try:
         response = urllib.request.urlopen(r)
         return response
