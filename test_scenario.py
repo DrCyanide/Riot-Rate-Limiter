@@ -6,12 +6,11 @@ from multiprocessing.managers import SyncManager
 
 config_path = 'config.json'
 
-# Read config to find port
-# Listen on port
 gamemode_summaries = None
 champion_summaries = None
 requested_matches = None
-
+request_queue = None
+response_queue = None
 
 class MyResponseListener(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
@@ -37,21 +36,30 @@ def start_sync_manager():
     global gamemode_summaries
     global champion_summaries
     global requested_matches
+    global request_queue
+    global response_queue
     manager = SyncManager()
     manager.start()
 
     gamemode_summaries = manager.dict([])
     champion_summaries = manager.dict([])
     requested_matches = manager.list([])
+    request_queue = manager.Queue()
+    response_queue = manager.Queue()
 
 
-def scenario_manager(config, summoner_name, platform_slug, gamemode_summaries, champion_summaries, requested_matches):
+
+def scenario_manager(config, platform_slug, request_queue, response_queue,
+                     gamemode_summaries, champion_summaries, requested_matches):
     print('Running scenario: Find out the game modes and champions a summoner has played')
     limiter_url = 'http://{0}:{1}'.format(config['server']['host'], config['server']['port'])
     response_url = 'http://{0}:{1}'.format(config['server']['host'], config['server']['port'] + 1)
 
-    summoner_by_name = 'https://{slug}.api.riotgames.com/lol/summoner/v3/summoners/by-name/{name}'
-    issue_request(limiter_url, response_url, summoner_by_name.format(slug=platform_slug, name=summoner_name), info="Hello World")
+    while True:
+        if request_queue.qsize() > 0:
+            url, info = request_queue.get()
+            issue_request(limiter_url, response_url, url, info=info)
+
 
 
 def issue_request(limiter_url, response_url, riot_url, info=None):
@@ -68,6 +76,7 @@ def issue_request(limiter_url, response_url, riot_url, info=None):
 
 
 def main():
+    global request_queue
     summoner_name = ''
     while len(summoner_name) == 0:
         summoner_name = input('Summoner Name: ')
@@ -82,9 +91,15 @@ def main():
     with open(config_path, 'r') as f:
         config = json.loads(f.read())
 
-    server = http.server.HTTPServer((config['server']['host'], config['server']['port'] + 1), MyResponseListener)
+    server = http.server.HTTPServer((config['server']['host'], config['server']['port'] + 1),
+                                    MyResponseListener)
 
-    scenario_args = (config, summoner_name, platform_slug, gamemode_summaries, champion_summaries, requested_matches)
+    summoner_by_name = 'https://{slug}.api.riotgames.com/lol/summoner/v3/summoners/by-name/{name}'
+    start_url = summoner_by_name.format(slug=platform_slug, name=summoner_name)
+    request_queue.put((start_url, "start"))
+
+    scenario_args = (config, platform_slug, request_queue, response_queue,
+                     gamemode_summaries, champion_summaries, requested_matches)
     sm = Process(target=scenario_manager, args=scenario_args, name='Scenario_Manager')
     sm.deamon = True
     sm.start()

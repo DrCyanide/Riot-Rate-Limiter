@@ -64,7 +64,7 @@ class MyHTTPHandler(http.server.BaseHTTPRequestHandler):
         data['url'] = self.headers.get('X-Url')
         if data['url']is None:
             self.send_response(400)
-            self.wfile.write('No X-Url header detected')
+            self.wfile.write(('No X-Url header detected\n').encode('utf-8'))
             self.end_headers()
             return
         
@@ -75,6 +75,7 @@ class MyHTTPHandler(http.server.BaseHTTPRequestHandler):
         # The Riot API has no commands where you just send data, so no return_url = error
         if  data['method'] in ['PUT','POST'] and (data['return_url'] is None):
             self.send_response(404)
+            self.wfile.write(('No X-Return-Url specified on a %s request\n' % data['method']).encode('utf-8'))
             self.end_headers()
             return
             
