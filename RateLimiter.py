@@ -4,6 +4,7 @@ from multiprocessing import Lock
 from multiprocessing import Process
 from multiprocessing.managers import SyncManager
 import time
+import datetime
 import urllib.request
 import urllib.error
 import traceback
@@ -21,7 +22,7 @@ ticker_condition = None
 get_dict = None
 get_condition = None
 
-logTimes = True
+logTimes = False
 startTime = None
 
 
@@ -256,7 +257,7 @@ def ticker(running, platforms, ticker_condition, r_queue, r_condition):
                 ticker_condition.wait()
                 ticker_condition.release()
                 continue
-            print('Ticker found something!')
+            #('Ticker found something!')
             
             # sleep until rate/method limits are OK
             # now = time.time()
@@ -301,6 +302,7 @@ def retriever(running, api_key, platforms, r_queue, r_condition, get_dict, get_c
             # TODO:
             # Some way to test without using up rate limit? Dummy mode?
             try:
+                print('%s - %s' % (datetime.datetime.now().strftime('%m-%d-%y %H:%M:%S'), data['url']))
                 r = urllib.request.Request(data['url'], headers={'X-Riot-Token': api_key})
                 response = urllib.request.urlopen(r)
                 platforms = handle_response(response, data, platforms, platform_lock, reply_condition, reply_queue, get_condition, get_dict, ticker_condition)
