@@ -337,13 +337,15 @@ def retriever(running, api_key, platforms, r_queue, r_condition, get_dict, get_c
 def outbound(running, reply_queue, reply_condition):
     try:
         while running:
-            reply_condition.acquire()
-            reply_condition.wait()
-            reply_condition.release()
+            if reply_queue.qsize() == 0:
+                reply_condition.acquire()
+                reply_condition.wait()
+                reply_condition.release()
             
             if reply_queue.qsize() == 0:
                 continue
             try:
+                print('Length of data: %s' % reply_queue.qsize())
                 data = reply_queue.get()
                 
                 request = urllib.request.Request(data['return_url'], data['response'], method='POST')
@@ -351,7 +353,9 @@ def outbound(running, reply_queue, reply_condition):
                 request.add_header('X-Code', '%s' % data['code'])
                 if data['info'] is not None:
                     request.add_header('X-Info', data['info'])
+                print('Sending data to app for URL "%s"'% data['url'])
                 urllib.request.urlopen(request)
+                print('App accepted data')
             except Exception as e:
                 print('Outbound error: %s' % e)
     except KeyboardInterrupt:
