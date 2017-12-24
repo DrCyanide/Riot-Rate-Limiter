@@ -206,10 +206,11 @@ def handle_response(response, data, platforms, platform_lock, reply_condition, r
     data['code'] = response.code
 
     if response.code == 200:
+        print('200 return')
         handle_return(data, get_condition, get_dict, reply_condition, reply_queue)
 
     # TODO: handle the error (500, 403, 404, 429, 401)
-    if response.code == 429:  # Rate Limit Issue
+    elif response.code == 429:  # Rate Limit Issue
         platform_lock.acquire()
         platforms, added = add_data(data, platforms, at_front=True)
         platform_lock.release()
@@ -223,14 +224,14 @@ def handle_response(response, data, platforms, platform_lock, reply_condition, r
             ticker_condition.notify()
             ticker_condition.release()
 
-    # if e.code == 500:
+    # elif e.code == 500:
     #   Internal server issue
     #   platform.handleDelay(url, headers)
     #   retry
-    # if e.code == 401:
+    # elif e.code == 401:
     #   Invalid API Key
     #   stop?
-    # if e.code == 403:
+    # elif e.code == 403:
     #   Blacklisted or Internal server issue
     #   retry?
 
@@ -345,7 +346,6 @@ def outbound(running, reply_queue, reply_condition):
             if reply_queue.qsize() == 0:
                 continue
             try:
-                print('Length of data: %s' % reply_queue.qsize())
                 data = reply_queue.get()
                 
                 request = urllib.request.Request(data['return_url'], data['response'], method='POST')
