@@ -65,11 +65,17 @@ class Platform:
 
         # Check that X-App-Rate-Limit didn't change
         if 'X-App-Rate-Limit' in headers:
-            self._verify_limits(headers)
+            try:
+                self._verify_limits(headers)
+            except Exception as e:
+                print('Platform - Exception verifying limits - %s' % e)
 
         # Check that X-App-Rate-Limit-Count is still OK
         if 'X-App-Rate-Limit-Count' in headers:
-            self._verify_counts(headers)
+            try:
+                self._verify_counts(headers)
+            except Exception as e:
+                print('Platform - Exception verifying counts - %s' % e)
 
         # Pass to the endpoint
         endpoint_str = Endpoint.identify_endpoint(url)
@@ -92,35 +98,34 @@ class Platform:
             self.delay_end = HeaderTools.retry_after_time(headers, self.default_retry_after)
 
     def _verify_limits(self, headers):
-        try:
-            if 'X-App-Rate-Limit' not in headers:
-                return
-            h_limits = HeaderTools.split_limits(headers, 'X-App-Rate-Limit')
-            old_limits = set(self.platform_limits.keys())
-            for requests, seconds in h_limits:
-                if seconds in self.platform_limits:
-                    old_limits.remove(seconds)
-                    if self.platform_limits[seconds].cap != requests:
-                        self.platform_limits[seconds] = Limit(seconds, requests)
-
-                else:
+        if 'X-App-Rate-Limit' not in headers:
+            return
+        h_limits = HeaderTools.split_limits(headers, 'X-App-Rate-Limit')
+        old_limits = set(self.platform_limits.keys())
+        for requests, seconds in h_limits:
+            if seconds in self.platform_limits:
+                old_limits.remove(seconds)
+                if self.platform_limits[seconds].cap != requests:
                     self.platform_limits[seconds] = Limit(seconds, requests)
+            else:
+                self.platform_limits[seconds] = Limit(seconds, requests)
 
-            for seconds in old_limits:
-                self.platform_limits.pop(seconds)
-        except Exception as e:
-            print('Platform - verify_limits: %s' % e)
+        for seconds in old_limits:
+            self.platform_limits.pop(seconds)
+        
 
     def _verify_counts(self, headers):
-        try:
-            if 'X-App-Rate-Limit-Count' not in headers:
-                return
-            h_limits = HeaderTools.split_limits(headers, 'X-App-Rate-Limit-Count')
-            for used, seconds in h_limits:
-                if seconds in self.platform_limits:
+        if 'X-App-Rate-Limit-Count' not in headers:
+            return
+        h_limits = HeaderTools.split_limits(headers, 'X-App-Rate-Limit-Count')
+        for used, seconds in h_limits:
+            if seconds in self.platform_limits:
+                try:
                     self.platform_limits[seconds].verify_count(int(used))
-        except Exception as e:
-            print('Platform - verifyLimits: %s' % e)
+                except Exception as e:
+                    print('Platform - Failed Limit -  (%s out of %s / %s)' % (used, self.platform_limits[seconds].cap, seconds))
+            # else should be handled by _verify_limits() being called first
+
 
     """def getResetTime(self):
         r_time = time.time()
@@ -172,16 +177,17 @@ class Platform:
             return None  # No records!"""
 
     def available(self):
-        if self.delay:
-            if time.time() < self.delay_end:
-                return self.delay_end
-            else:
-                self.delay = False
+        # if self.delay:
+        #     if time.time() < self.delay_end:
+        #         return self.delay_end # Ticker is looking for a True/False for available, why am I returning a Time?
+        #     else:
+        #         self.delay = False
         if self.static_count > 0:
+            print("Wasn't Static API Depricated?")
             for endpoint_str in self.static_endpoints:
                 if self.static_endpoints[endpoint_str].available():
                     return True
-        elif self.limited_count > 0 and self.rate_limit_ok:
+        elif self.limited_count > 0 and self.rate_limit_ok():
             for endpoint_str in self.limited_endpoints:
                 if self.limited_endpoints[endpoint_str].available():
                     # print(endpoint_str)

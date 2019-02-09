@@ -208,9 +208,10 @@ def handle_response(response, data, platforms, platform_lock, reply_condition, r
     if response.code == 200:
         print('200 return')
         handle_return(data, get_condition, get_dict, reply_condition, reply_queue)
-
+    else:
+        print('%s return' % response.code)
     # TODO: handle the error (500, 403, 404, 429, 401)
-    elif response.code == 429:  # Rate Limit Issue
+    if response.code == 429:  # Rate Limit Issue
         platform_lock.acquire()
         platforms, added = add_data(data, platforms, at_front=True)
         platform_lock.release()
@@ -219,7 +220,7 @@ def handle_response(response, data, platforms, platform_lock, reply_condition, r
             handle_return(data, get_condition, get_dict, reply_condition, reply_queue)
 
         else:
-            print('Retrying!')
+            #print('Retrying!')
             ticker_condition.acquire()
             ticker_condition.notify()
             ticker_condition.release()
@@ -300,6 +301,10 @@ def retriever(running, api_key, platforms, r_queue, r_condition, get_dict, get_c
                 data = r_queue.get()
                 r_condition.release()
 
+            if data == None:
+                # ran into a crash when r_queue gave back None.
+                continue
+
             # TODO:
             # Some way to test without using up rate limit? Dummy mode?
             try:
@@ -353,9 +358,9 @@ def outbound(running, reply_queue, reply_condition):
                 request.add_header('X-Code', '%s' % data['code'])
                 if data['info'] is not None:
                     request.add_header('X-Info', data['info'])
-                print('Sending data to app for URL "%s"'% data['url'])
+                # print('Sending data to app for URL "%s"'% data['url'])
                 urllib.request.urlopen(request)
-                print('App accepted data')
+                # print('App accepted data')
             except Exception as e:
                 print('Outbound error: %s' % e)
     except KeyboardInterrupt:
