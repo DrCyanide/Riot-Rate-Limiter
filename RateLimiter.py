@@ -163,8 +163,7 @@ def add_data(data, platforms, at_front=False, max_attempts=3):
     platform = platforms[platform_slug]
     platform.add_data(data, at_front)
     platforms.update([(platform_slug,platform)])
-    
-    print('Added data (total in platform: %s)' % (platforms[platform_slug].count))
+    print('Added data (total in platform %s: %s)' % (platform_slug, platforms[platform_slug].count))
 
     return platforms, True
     
@@ -174,6 +173,7 @@ def get_data(platform_slug, platforms):
     platform = platforms[platform_slug]
     data = platform.get()
     platforms.update([(platform_slug,platform)])
+    print('Removed data (total in platform %s: %s)' % (platform_slug, platforms[platform_slug].count))
     return platforms, data
     
     

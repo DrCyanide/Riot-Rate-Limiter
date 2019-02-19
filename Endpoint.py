@@ -115,7 +115,7 @@ class Endpoint:
 
     def available(self):
         if self.count == 0:
-            print('Endpoint not available, no data')
+            # print('Endpoint not available, no data')
             return False
         for seconds in self.limits.keys():
             limit = self.limits[seconds]
