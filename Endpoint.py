@@ -1,14 +1,13 @@
 import time
-from collections import deque
 from Limit import Limit
 import HeaderTools
 
 
 class Endpoint:
-    def __init__(self, name='', first_request=None):
+    def __init__(self, manager, name='', first_request=None):
         self.name = name
-        self.data_deque = deque()
-        self.limits = {}
+        self.data_deque = manager.list()
+        self.limits = manager.dict()
         
         self.delay = False
         self.delay_end = None
@@ -20,6 +19,7 @@ class Endpoint:
         else:
             self.first_request = first_request
 
+
     @classmethod
     def identify_endpoint(cls, url):
         if '?' in url:  # Remove the query string
@@ -28,7 +28,7 @@ class Endpoint:
         split_url = url.split('/')
         try:
             split_url = split_url[3:]  # remove region
-            if 'by-name' in split_url: 
+            if 'by-name' in split_url or 'by-summoner': 
                 return '/'.join(split_url[:-1])  # Ignore the player name itself
             else:
                 non_numeric = []
@@ -64,15 +64,20 @@ class Endpoint:
             if 'X-Method-Rate-Limit' in headers:
                 h_limits = HeaderTools.split_limits(headers, 'X-Method-Rate-Limit')
                 old_limits = set(self.limits.keys())
-                for requests, seconds in h_limits:
-                    if seconds in self.limits:
-                        if self.limits[seconds].cap != requests:
-                            old_limits.remove(seconds)
+                for cap, seconds in h_limits:
+                    if seconds in self.limits.keys():
+                        old_limits.remove(seconds)
+                        if self.limits[seconds].cap != int(cap):
+                            print("Old limit didn't match cap - %s vs %s" % (self.limits[seconds].cap, cap))
+                            self.limits.update([(seconds, Limit(seconds, cap))])
+                            
                     else:
-                        self.limits[seconds] = Limit(seconds, requests)
+                        # self.limits[seconds] = Limit(seconds, cap)
+                        self.limits.update([(seconds, Limit(seconds, cap))])
                         
                 # Delete extra limits
                 for seconds in old_limits:
+                    print('Old limit removed? %s / %s' % (self.limits[seconds].cap, seconds))
                     self.limits.pop(seconds)
         except Exception as e:
             print('Endpoint - verifyLimits: e' % e)
@@ -83,8 +88,12 @@ class Endpoint:
                 return
             h_limits = HeaderTools.split_limits(headers, 'X-Method-Rate-Limit-Count')
             for used, seconds in h_limits:
-                if seconds in self.limits:
-                    self.limits[seconds].verify_count(int(used))
+                if seconds in self.limits.keys():
+                    limit = self.limits[seconds]
+                    limit.verify_count(int(used))
+                    self.limits.update([(seconds, limit)])
+                else:
+                    print("Endpoint - Didn't find %s in limit, present in header" % seconds)
         except Exception as e:
             print('Endpoint - _verifyCounts: %s' % e)
 
@@ -100,15 +109,18 @@ class Endpoint:
                 raise Exception('Invalid URL, does not match endpoint')
 
         if front:
-            self.data_deque.appendleft(data)
+            self.data_deque.insert(0, data)
         else:
             self.data_deque.append(data)
 
     def available(self):
         if self.count == 0:
+            print('Endpoint not available, no data')
             return False
-        for limit_str in self.limits:
-            if not self.limits[limit_str].ready():
+        for seconds in self.limits.keys():
+            limit = self.limits[seconds]
+            if not limit.ready():
+                print('Endpoint not available, limit issue')
                 return False
         if self.delay:
             if time.time() < self.delay_end:
@@ -121,8 +133,9 @@ class Endpoint:
         strs = []
         if len(self.limits.keys()) == 0:
             return 'No limits defined'
-        for limit_str in sorted(self.limits):
-            s = '%s:%s' % (self.limits[limit_str].used, self.limits[limit_str].cap)
+        for seconds in sorted(self.limits.keys()):
+            # This isn't completely accurate, will pause after the last request, even if the time has elapsed
+            s = '%s:%s' % (self.limits[seconds].used, self.limits[seconds].cap)
             strs.append(s)
         return ','.join(strs)
 
@@ -135,9 +148,10 @@ class Endpoint:
             if time.time() > self.delay_end:
                 self.delay = False
         r_time = time.time()
-        for limit in self.limits:
-            if not self.limits[limit].ready():
-                next = self.limits[limit].next_ready()
+        for seconds in self.limits.keys():
+            limit = self.limits[seconds] 
+            if not limit.ready():
+                next = limit.next_ready()
                 if next > r_time:
                     r_time = next
         if self.delay and r_time < self.delay_end:
@@ -151,8 +165,10 @@ class Endpoint:
         if not self.available():
             return None
                 
-        for limit in self.limits:
-            self.limits[limit].use()
+        for seconds in self.limits.keys():
+            limit = self.limits[seconds]
+            limit.use()
+            self.limits.update([(seconds, limit)])
             
-        data = self.data_deque.popleft()
+        data = self.data_deque.pop(0)
         return data

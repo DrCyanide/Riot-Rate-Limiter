@@ -1,7 +1,8 @@
 
 {
 	"riot_games":{
-		"api_key":"ABCD-1234-GLHF-RITO-PLZ"
+		"api_key":"RGAPI-ABCD-1234-GLHF-RITO-PLZ",
+		"endpoints": 24
 	},
 	
 	"server": {
@@ -10,12 +11,16 @@
 	},
 	
 	"threads": {
-		"api_threads": 5,
-		"return_threads": 1
+		"api_threads": 10,
+		"return_threads": 3
 	},
 	
 	"security": {
 		"blacklist":[],
 		"whitelist":["127.0.0.1"]
+	},
+
+	"poke": {
+		"delay": 10
 	}
 }
