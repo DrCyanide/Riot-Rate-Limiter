@@ -238,7 +238,9 @@ def handle_response(response, data, platforms, platform_lock, reply_condition, r
     # TODO: handle the error (500, 403, 404, 429, 401)
     if response.code == 429:  # Rate Limit Issue
         platform_lock.acquire()
-        print('429 debugging - Available: %s Used: %s Limit Ready: %s' % (platform.available(), platform.platform_limits['120'].used, platform.platform_limits['120'].ready()))
+        print('429 debugging')
+        for limit in platform.platform_limits.keys():
+            print('- Available: %s Used: %s Limit Ready: %s' % (platform.available(), platform.platform_limits[limit].used, platform.platform_limits[limit].ready()))
         platforms, added = add_data(data, platforms, at_front=True)
         platform_lock.release()
 
