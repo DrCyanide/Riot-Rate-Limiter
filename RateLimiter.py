@@ -231,40 +231,40 @@ def handle_response(response, data, platforms, platform_lock, reply_condition, r
 
     notify_if_not_done(platforms, ticker_condition)
     if response.code == 200:
-        print('200 return')
+        # print('200 return from API')
         handle_return(data, get_condition, get_dict, reply_condition, reply_queue)
-    else:
-        print('%s return' % response.code)
+    elif response.code != 200:
+        print('%s from API' % response.code)
     # TODO: handle the error (500, 403, 404, 429, 401)
-    if response.code == 429:  # Rate Limit Issue
-        platform_lock.acquire()
-        print('429 debugging')
-        for limit in platform.platform_limits.keys():
-            print('- Available: %s Used: %s Limit Ready: %s' % (platform.available(), platform.platform_limits[limit].used, platform.platform_limits[limit].ready()))
-        platforms, added = add_data(data, platforms, at_front=True)
-        platform_lock.release()
+        if response.code == 429:  # Rate Limit Issue
+            platform_lock.acquire()
+            print('429 debugging')
+            for limit in platform.platform_limits.keys():
+                print('- Available: %s Used: %s Limit Ready: %s' % (platform.available(), platform.platform_limits[limit].used, platform.platform_limits[limit].ready()))
+            platforms, added = add_data(data, platforms, at_front=True)
+            platform_lock.release()
 
-        if not added:
-            handle_return(data, get_condition, get_dict, reply_condition, reply_queue)
+            if not added:
+                handle_return(data, get_condition, get_dict, reply_condition, reply_queue)
+
+            else:
+                #print('Retrying!')
+                notify_if_not_done(platforms, ticker_condition)
+
+        # elif e.code == 500:
+        #   Internal server issue
+        #   platform.handleDelay(url, headers)
+        #   retry
+        # elif e.code == 401:
+        #   Invalid API Key
+        #   stop?
+        # elif e.code == 403:
+        #   Blacklisted or Internal server issue
+        #   retry?
 
         else:
-            #print('Retrying!')
-            notify_if_not_done(platforms, ticker_condition)
-
-    # elif e.code == 500:
-    #   Internal server issue
-    #   platform.handleDelay(url, headers)
-    #   retry
-    # elif e.code == 401:
-    #   Invalid API Key
-    #   stop?
-    # elif e.code == 403:
-    #   Blacklisted or Internal server issue
-    #   retry?
-
-    else:
-        # Unknown error
-        handle_return(data, get_condition, get_dict, reply_condition, reply_queue)
+            # Unknown error
+            handle_return(data, get_condition, get_dict, reply_condition, reply_queue)
 
     return platforms
 
